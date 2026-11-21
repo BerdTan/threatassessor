@@ -421,6 +421,97 @@ def run_phase2() -> Tuple[int, int]:
     return passed, total
 
 
+def _legacy_fail_open_check(entry_point, architecture="", caller_id="", policy_path=None):
+    """The pre-Entry-264 behaviour, used only as a mutant to prove Phase 3 can fail."""
+    from chatbot.harness.spend_gate import Verdict
+    try:
+        import yaml
+        path = Path(policy_path)
+        if not path.exists():
+            return Verdict("allow")
+        b = (yaml.safe_load(path.read_text()) or {}).get("bouncer", {})
+        if b.get("kill_switch") is True:
+            return Verdict("kill", "kill_switch")
+        if architecture and architecture in b.get("blocked_architectures", []):
+            return Verdict("block", "blocked_architectures")
+    except Exception:
+        pass
+    return Verdict("allow")
+
+
+def _run_gate_cases(check_fn, cases, tmp: Path):
+    results = []
+    for c in cases:
+        if c["policy"] == "MISSING":
+            pol = tmp / "absent.yaml"
+        else:
+            pol = tmp / f"{c['name']}.yaml"
+            pol.write_text(c["policy"])
+        v = check_fn("tmeval-p3", architecture=c.get("architecture", ""), policy_path=pol)
+        results.append((c, v.action == c["expected_action"], v.action))
+    return results
+
+
+def run_phase3() -> Tuple[int, int]:
+    """Phase 3 — spend gate: verdict cases, route coverage, and a mutation proof."""
+    import tempfile
+    print(f"\n{_BLD}Phase 3 — spend gate (fail-closed + route coverage + mutation){_RST}")
+    from chatbot.harness import spend_gate as sg
+    cases = _load_yaml(_CASES_DIR / "phase3_cases.yaml")["cases"]
+    passed = total = 0
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        for c, ok, got in _run_gate_cases(sg.check, cases, tmp):
+            total += 1
+            if ok:
+                passed += 1
+                print(_pass(f"{c['name']:<36} {_DIM}{got}{_RST}"))
+            else:
+                print(_fail(f"{c['name']:<36} got {got}, expected {c['expected_action']}"))
+
+        # Mutation proof: against the legacy fail-open gate the fail-closed cases
+        # must FAIL. If they still pass, Phase 3 cannot detect the regression.
+        total += 1
+        legacy = _run_gate_cases(_legacy_fail_open_check, cases, tmp)
+        caught = [c["name"] for c, ok, _ in legacy if c.get("fail_closed") and not ok]
+        wanted = [c["name"] for c in cases if c.get("fail_closed")]
+        if set(caught) == set(wanted):
+            passed += 1
+            print(_pass(f"{'mutation: legacy fail-open caught':<36} {_DIM}{len(caught)}/{len(wanted)} fail-closed cases fail on the mutant{_RST}"))
+        else:
+            print(_fail(f"{'mutation: legacy fail-open caught':<36} not caught: {sorted(set(wanted) - set(caught))}"))
+
+    # Route coverage: every spend route carries the gate dependency.
+    total += 1
+    try:
+        from chatbot.api.app import create_app
+
+        def _names(dep):
+            out = {getattr(getattr(dep, "call", None), "__name__", "")}
+            for sub in getattr(dep, "dependencies", []):
+                out |= _names(sub)
+            return out
+
+        gated = {}
+        for r in create_app().routes:
+            dep = getattr(r, "dependant", None)
+            if dep:
+                for m in getattr(r, "methods", set()) - {"HEAD", "OPTIONS"}:
+                    gated[(m, r.path)] = "spend_gate" in _names(dep)
+        bad = [f"{m} {p}" for m, p in sg.SPEND_ROUTES
+               if not any(k[0] == m and k[1].endswith(p) and v for k, v in gated.items())]
+        if bad:
+            print(_fail(f"{'route coverage':<36} ungated: {bad}"))
+        else:
+            passed += 1
+            print(_pass(f"{'route coverage':<36} {_DIM}{len(sg.SPEND_ROUTES)} spend routes gated{_RST}"))
+    except Exception as exc:
+        print(_fail(f"{'route coverage':<36} could not load app: {type(exc).__name__}"))
+
+    print(f"\nPhase 3: {_GRN if passed == total else _RED}{passed}/{total} PASS{_RST}\n")
+    return passed, total
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -431,18 +522,20 @@ def main() -> int:
     )
     parser.add_argument("--phase1",   action="store_true", help="Run Phase 1 (outside-in REST probe)")
     parser.add_argument("--phase2",   action="store_true", help="Run Phase 2 (inside-out fault injection)")
-    parser.add_argument("--all",      action="store_true", help="Run both phases")
+    parser.add_argument("--phase3",   action="store_true", help="Run Phase 3 (spend gate: fail-closed, coverage, mutation)")
+    parser.add_argument("--all",      action="store_true", help="Run all phases")
     parser.add_argument("--api-url",  default="http://localhost:8000", help="TA API base URL [%(default)s]")
     parser.add_argument("--dry-run",  action="store_true", help="Phase 1: validate cases only, no API calls")
     parser.add_argument("--timeout",  type=int, default=180, help="Phase 1 SSE timeout per case in seconds [%(default)s]")
     args = parser.parse_args()
 
-    if not (args.phase1 or args.phase2 or args.all):
+    if not (args.phase1 or args.phase2 or args.phase3 or args.all):
         parser.print_help()
         return 1
 
     run_p1 = args.phase1 or args.all
     run_p2 = args.phase2 or args.all
+    run_p3 = args.phase3 or args.all
 
     total_passed = 0
     total_cases  = 0
@@ -454,6 +547,11 @@ def main() -> int:
 
     if run_p2:
         p, t = run_phase2()
+        total_passed += p
+        total_cases  += t
+
+    if run_p3:
+        p, t = run_phase3()
         total_passed += p
         total_cases  += t
 

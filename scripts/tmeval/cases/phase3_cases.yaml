@@ -1,0 +1,12 @@
+# Phase 3 — spend-gate probe (Entry 264). Policy text -> expected gate verdict.
+# policy: MISSING means the file does not exist.
+cases:
+  - {name: clean_policy_allows,        policy: "bouncer:\n  kill_switch: false\n",            expected_action: allow}
+  - {name: no_bouncer_section_allows,  policy: "other: 1\n",                                   expected_action: allow}
+  - {name: kill_switch_true_kills,     policy: "bouncer:\n  kill_switch: true\n",             expected_action: kill}
+  - {name: blocked_arch_blocks,        policy: "bouncer:\n  blocked_architectures: [evil]\n", architecture: evil, expected_action: block}
+  - {name: other_arch_allowed,         policy: "bouncer:\n  blocked_architectures: [evil]\n", architecture: fine, expected_action: allow}
+  - {name: unparseable_policy_blocks,  policy: "bouncer: [unclosed\n  - : :\n",              expected_action: block, fail_closed: true}
+  - {name: missing_policy_blocks,      policy: MISSING,                                       expected_action: block, fail_closed: true}
+  - {name: list_policy_blocks,         policy: "- a\n- b\n",                                  expected_action: block, fail_closed: true}
+  - {name: string_kill_switch_blocks,  policy: "bouncer:\n  kill_switch: 'yes'\n",            expected_action: block, fail_closed: true}
