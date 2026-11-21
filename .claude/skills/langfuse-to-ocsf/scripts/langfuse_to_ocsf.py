@@ -370,34 +370,42 @@ def _get_client():
     return Langfuse(public_key=public_key, secret_key=secret_key, host=host)
 
 
+class _RunTrace:
+    """Trace-shaped view of a run's root observation.
+
+    Langfuse Cloud removed trace.get/list (HTTP 410, 2026-11-16) and the run id is
+    no longer the trace id, so a run is read as its root ``threat_assessment``
+    observation via observations.get_many. ``id`` is the real trace id.
+    """
+
+    def __init__(self, obs):
+        self.id = getattr(obs, "trace_id", "") or getattr(obs, "id", "")
+        self.name = getattr(obs, "name", "")
+        self.metadata = getattr(obs, "metadata", None) or {}
+        self.input = getattr(obs, "input", None)
+        self.output = getattr(obs, "output", None) or {}
+        self.timestamp = getattr(obs, "start_time", None)
+        self.updated_at = getattr(obs, "end_time", None)
+        self.tags = []
+
+
 def fetch_traces(lf, arch: Optional[str], trace_id: Optional[str],
                  since: Optional[str], limit: int) -> List:
     """Return a list of Trace objects from Langfuse."""
+    kwargs = {"name": "threat_assessment", "is_root_observation": True,
+              "fields": "core,basic,io", "limit": min(limit * 4, 200) if arch else limit}
     if trace_id:
-        t = lf.api.trace.get(trace_id)
-        return [t] if t else []
-
-    kwargs = {"name": "threat_assessment", "limit": limit}
-    if arch:
-        # Langfuse v4: filter by metadata not directly supported in list —
-        # fetch by name + post-filter on metadata.architecture
-        kwargs["limit"] = min(limit * 4, 200)  # over-fetch then filter
+        kwargs = {"trace_id": trace_id, "is_root_observation": True,
+                  "fields": "core,basic,io", "limit": 1}
     if since:
         try:
-            kwargs["from_timestamp"] = datetime.fromisoformat(since.replace("Z", "+00:00"))
+            kwargs["from_start_time"] = datetime.fromisoformat(since.replace("Z", "+00:00"))
         except ValueError:
             print(f"WARNING: invalid --since value '{since}', ignoring.", file=sys.stderr)
-
-    kwargs["fields"] = "core,io,scores,metrics"
-    result = lf.api.trace.list(**kwargs)
-    traces = list(getattr(result, "data", []) or [])
-
+    result = lf.api.observations.get_many(**kwargs)
+    traces = [_RunTrace(o) for o in (getattr(result, "data", []) or [])]
     if arch:
-        traces = [
-            t for t in traces
-            if (getattr(t, "metadata", {}) or {}).get("architecture") == arch
-        ][:limit]
-
+        traces = [t for t in traces if t.metadata.get("architecture") == arch][:limit]
     return traces
 
 

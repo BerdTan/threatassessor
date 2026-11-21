@@ -40,14 +40,26 @@ def _lf_client():
     )
 
 
+class _Run:
+    """Trace-shaped view of a root ``threat_assessment`` observation (trace.list is gone: HTTP 410)."""
+
+    def __init__(self, obs):
+        self.metadata = getattr(obs, "metadata", None) or {}
+        self.output = getattr(obs, "output", None) or {}
+        self.tags = []
+        self.total_tokens = 0
+        self.total_cost = 0.0
+
+
 def _fetch_traces(lf, limit: int, since: str | None):
-    """Return list of trace dicts from Langfuse."""
-    kwargs: dict = {"name": "threat_assessment", "limit": limit}
+    """Return run views from Langfuse (root observations via the observations API)."""
+    kwargs: dict = {"name": "threat_assessment", "is_root_observation": True,
+                    "fields": "core,basic,io", "limit": limit}
     if since:
         import datetime
-        kwargs["from_timestamp"] = datetime.datetime.fromisoformat(since)
-    page = lf.api.trace.list(**kwargs)
-    return page.data if hasattr(page, "data") else []
+        kwargs["from_start_time"] = datetime.datetime.fromisoformat(since)
+    page = lf.api.observations.get_many(**kwargs)
+    return [_Run(o) for o in (getattr(page, "data", []) or [])]
 
 
 def _routing_mode(trace) -> str:
