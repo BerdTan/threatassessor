@@ -8,6 +8,7 @@ import logging
 import queue
 import tempfile
 import asyncio
+import time
 import concurrent.futures
 from pathlib import Path
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Request, status, Query
@@ -582,6 +583,7 @@ async def analyze_architecture_stream(
 async def expert_review_with_progress(
     architecture_name: str,
     critic_mode: str = "sequential",
+    caller: Optional[dict] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Run MoE Expert Review pipeline with SSE progress updates.
@@ -706,6 +708,7 @@ async def expert_review_with_progress(
                 run_blackhat=_bh_enabled,
             )
 
+        _er_t0 = time.time()
         task = loop.run_in_executor(None, _run_pipeline)
 
         # Per-critic progress bands: (start_pct, end_pct, stage_label, message)
@@ -837,6 +840,12 @@ async def expert_review_with_progress(
             emitted_critics.add(critic_stage)
             yield _critic_sse(critic_stage, vr)
 
+        # This route bypasses the harness, so record the run for Langfuse + the caller ledger.
+        if result is not None:
+            from chatbot.harness.er_telemetry import record_expert_review
+            record_expert_review(architecture_name, result, caller, critic_mode,
+                                 wall_s=time.time() - _er_t0)
+
         yield await SSEStream.send_progress(
             stage="synthesis",
             progress=95,
@@ -917,6 +926,7 @@ async def expert_review_with_progress(
 
 @router.get("/expert-review", dependencies=[Depends(spend_gate("expert-review-stream"))])
 async def expert_review_stream(
+    request: Request,
     architecture_name: str = Query(
         ...,
         description="Architecture name (must match an existing analysis in report/)"
@@ -975,7 +985,10 @@ async def expert_review_stream(
         )
 
     return StreamingResponse(
-        expert_review_with_progress(architecture_name, critic_mode=critic_mode),
+        expert_review_with_progress(
+            architecture_name, critic_mode=critic_mode,
+            caller=build_caller_context(
+                request.headers, request.client.host if request.client else None, "rest")),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

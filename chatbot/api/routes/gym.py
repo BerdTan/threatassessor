@@ -14,10 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from chatbot.api.dependencies import verify_api_key, spend_gate
+from chatbot.harness.caller_context import build_caller_context
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ class GymSession:
     brier_snapshots: List[float] = field(default_factory=list)
     iterations: List[GymIteration] = field(default_factory=list)
     started_at: float = field(default_factory=time.time)
+    caller: dict = field(default_factory=dict)  # who started the loop; stamped on every run
     updated_at: float = field(default_factory=time.time)
     _task: Optional[asyncio.Task] = field(default=None, repr=False, compare=False)
 
@@ -144,6 +146,7 @@ async def _gym_loop(sess: GymSession) -> None:
                 github_repo=None,
                 passport=passport,
                 passport_token=passport_token,
+                caller=sess.caller,
             )
         except Exception as exc:
             logger.warning("TAgym iteration %d failed: %s", sess.current_iteration - 1, exc)
@@ -194,7 +197,7 @@ class GymStartRequest(BaseModel):
 # ── endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/gym/start", dependencies=[Depends(verify_api_key), Depends(spend_gate("gym-start"))])
-async def gym_start(body: GymStartRequest):
+async def gym_start(body: GymStartRequest, request: Request):
     """Start (or restart) the TAgym autonomous assessment loop."""
     global _session
 
@@ -223,6 +226,8 @@ async def gym_start(body: GymStartRequest):
         target_type=body.target_type,
         ssp_profile=body.ssp_profile,
         max_iterations=body.max_iterations,
+        caller=build_caller_context(
+            request.headers, request.client.host if request.client else None, "taclaw"),
     )
     _session = sess
     sess._task = asyncio.create_task(_gym_loop(sess))

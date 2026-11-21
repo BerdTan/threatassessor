@@ -22,12 +22,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from chatbot.adapters.base import ArchitectureGraph
 from chatbot.adapters.crawler import CrawledArtifact, RepoCrawler, clone_repo
 from chatbot.api.dependencies import verify_api_key, spend_gate
+from chatbot.harness.caller_context import build_caller_context
 from chatbot.api.job_store import Job, get_job_store
 from chatbot.config import get_settings
 from chatbot.modules.agent_passport import AgentPassport, mint_passport, validate_token as _validate_passport
@@ -73,6 +74,7 @@ async def _run_taclaw_job(
     github_repo: Optional[str],
     passport: Optional[AgentPassport] = None,
     passport_token: Optional[str] = None,
+    caller: Optional[dict] = None,
 ) -> None:
     store = get_job_store()
     _tmpdir: Optional[str] = None
@@ -247,6 +249,9 @@ async def _run_taclaw_job(
                     enable_scrum_master=routing_mode == "full_moe",
                     agent_models=_agent_models,
                     metadata={
+                        # caller_id/session_id/source: without these the run reaches Langfuse
+                        # with no user or session (found in the 2026-11-21 live check).
+                        **(caller or {}),
                         "routing_mode": routing_mode,
                         "agent_passport_status": "valid" if _passport_valid else _passport_reason,
                         "agent_passport_id": passport.passport_id() if passport else "",
@@ -499,7 +504,7 @@ async def _run_taclaw_job(
 # ── endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/taclaw/run", dependencies=[Depends(verify_api_key), Depends(spend_gate("taclaw-run"))])
-async def taclaw_run(body: TAClawRequest):
+async def taclaw_run(body: TAClawRequest, request: Request):
     """
     Submit a TAclaw autonomous security assessment job.
 
@@ -547,6 +552,8 @@ async def taclaw_run(body: TAClawRequest):
             github_repo=body.github_repo,
             passport=_passport,
             passport_token=_passport_token,
+            caller=build_caller_context(
+                request.headers, request.client.host if request.client else None, "taclaw"),
         )
     )
 
