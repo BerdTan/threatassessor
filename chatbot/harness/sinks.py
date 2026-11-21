@@ -216,6 +216,11 @@ class LangfuseSink(BaseSink):
         except Exception as exc:
             logger.warning(f"LangfuseSink: init failed (non-fatal): {exc}")
 
+    def _tid(self, event: "HarnessEvent") -> str:
+        """Real Langfuse trace id of the current run (falls back to the run id)."""
+        t = getattr(self, "_trace_id", None)
+        return t if isinstance(t, str) and t else event.run_id
+
     def _scope(self, event: "HarnessEvent"):
         """Langfuse trace-level session/user for every span of this event.
 
@@ -250,11 +255,20 @@ class LangfuseSink(BaseSink):
                 self._routing_mode = _routing_mode
                 # v4: start_observation with trace_context pins the trace_id so
                 # create_score(trace_id=run_id) references the same trace.
+                # A true root (no trace_context): pinning only the trace_id gives the
+                # span a synthetic parent Langfuse never receives, so the trace has no
+                # top-level span and shows no input/output (Langfuse support, 2026-11-21).
+                # The run id stays in metadata; scores use the real trace id (_tid).
                 self._trace = self._lf.start_observation(
-                    trace_context={"trace_id": event.run_id},
                     name="threat_assessment",
                     as_type="span",
+                    input={
+                        "architecture": p.get("architecture", ""),
+                        "scenario": p.get("scenario", ""),
+                        "routing_mode": _routing_mode,
+                    },
                     metadata={
+                        "run_id": event.run_id,
                         "scenario": p.get("scenario", ""),
                         "architecture": p.get("architecture", ""),
                         "routing_mode": _routing_mode,
@@ -264,16 +278,27 @@ class LangfuseSink(BaseSink):
                     },
                 )
                 self._current_trace = self._trace
+                self._trace_id = getattr(self._trace, "trace_id", None)
 
             elif event.event_type == "mcp_tool_call":
-                # Standalone span on a per-MCP-session trace (no run in flight).
+                # One real root span per tool call, with the call's input/output and its
+                # measured duration. (Previously: a 0 ms metadata-only span with a
+                # synthetic parent, which left Langfuse sessions empty.)
+                meta = {k: v for k, v in p.items() if k not in ("input", "output", "duration_s")}
                 span = self._lf.start_observation(
-                    trace_context={"trace_id": event.run_id},
                     name=f"mcp:{p.get('tool', event.source)}",
-                    as_type="span",
-                    metadata=p,
+                    as_type="tool",
+                    input=p.get("input"),
+                    metadata=meta,
                 )
-                span.end()
+                if p.get("output") is not None:
+                    span.update(output=p.get("output"))
+                dur = p.get("duration_s")
+                try:
+                    start_ns = span._otel_span.start_time
+                    span.end(end_time=start_ns + int(float(dur) * 1e9)) if dur else span.end()
+                except Exception:
+                    span.end()
 
             elif event.event_type == "stage_complete" and self._trace:
                 child = self._trace.start_observation(
@@ -359,7 +384,7 @@ class LangfuseSink(BaseSink):
                     self._lf.create_score(
                         name=flow,
                         value=value,
-                        trace_id=event.run_id,
+                        trace_id=self._tid(event),
                         data_type="NUMERIC",
                         comment=f"AIVSS {flow.replace('aivss_','')} composite — {overall_sev}",
                     )
@@ -377,7 +402,7 @@ class LangfuseSink(BaseSink):
                     self._lf.create_score(
                         name=f"sm_verdict_{critic}",
                         value=1.0 if verdict == "accepted" else 0.0,
-                        trace_id=event.run_id,
+                        trace_id=self._tid(event),
                         data_type="NUMERIC",
                         comment=f"SM verdict for {critic}: {verdict}",
                     )
@@ -385,7 +410,7 @@ class LangfuseSink(BaseSink):
                 self._lf.create_score(
                     name="sm_acceptance_rate",
                     value=float(p.get("acceptance_rate", 1.0)),
-                    trace_id=event.run_id,
+                    trace_id=self._tid(event),
                     data_type="NUMERIC",
                     comment="Fraction of critics accepted by ScrumMaster (1.0 = all accepted)",
                 )

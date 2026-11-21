@@ -258,6 +258,46 @@ mcp = FastMCP(
 )
 
 
+def _trace_tools(app) -> None:
+    """Wrap every sync tool registered via ``app.tool()`` so each call is traced with
+    its input, output and duration (Langfuse sessions show input/output as messages)."""
+    import functools
+    import inspect
+
+    orig = app.tool
+
+    def tool(*a, **k):
+        deco = orig(*a, **k)
+
+        def wrap(fn):
+            if inspect.iscoroutinefunction(fn):
+                return deco(fn)  # async tools are not wrapped
+
+            @functools.wraps(fn)
+            def inner(*args, **kwargs):
+                try:
+                    bound = dict(inspect.signature(fn).bind_partial(*args, **kwargs).arguments)
+                except Exception:
+                    bound = {}
+                _access_log.begin_call(fn.__name__, bound)
+                try:
+                    out = fn(*args, **kwargs)
+                except Exception as exc:
+                    _access_log.end_call(error=type(exc).__name__)
+                    raise
+                _access_log.end_call(out)
+                return out
+
+            return deco(inner)
+
+        return wrap
+
+    app.tool = tool
+
+
+_trace_tools(mcp)
+
+
 # ---------------------------------------------------------------------------
 # Tool 1 — analyze_architecture
 # ---------------------------------------------------------------------------

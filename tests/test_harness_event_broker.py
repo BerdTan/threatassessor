@@ -24,6 +24,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+
 from chatbot.harness.event_broker import EventBrokerCritic, HarnessEvent, EVENT_TYPES
 from chatbot.harness.sinks import BaseSink, SiemSink, LangfuseSink, WebhookSink
 
@@ -803,3 +804,10 @@ class TestMultiSinkIntegration:
 
         # Webhook mock received 4 emit calls
         assert wh_sink.emit.call_count == 4
+
+
+@pytest.fixture(autouse=True)
+def _allow_mocked_langfuse(monkeypatch):
+    """These tests mock the Langfuse client; the global LANGFUSE_SKIP guard (tests/conftest.py)
+    would stop the sink creating it. Nothing real is sent because the client is mocked."""
+    monkeypatch.delenv("LANGFUSE_SKIP", raising=False)

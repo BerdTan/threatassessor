@@ -98,6 +98,17 @@ class MCPAccessSignals:
         return asdict(self)
 
 
+_CALL = threading.local()
+_IO_MAX = 2000
+
+
+def _clip(v) -> object:
+    if v is None:
+        return None
+    t = v if isinstance(v, str) else repr(v)
+    return t if len(t) <= _IO_MAX else t[:_IO_MAX] + f"...[{len(t) - _IO_MAX} chars clipped]"
+
+
 def _process_session() -> str:
     from chatbot.harness.caller_context import process_session
     return process_session()
@@ -143,9 +154,31 @@ class MCPAccessLogger:
             if auth_failed:
                 self._auth_failures.append(now)
             self._prune(now)
-        self._emit_event(now, tool_name, arch_name, success, auth_failed, caller)
+        if getattr(_CALL, "active", None) is not None:
+            _CALL.pending = (now, tool_name, arch_name, success, auth_failed, caller)  # emitted by end_call
+        else:
+            self._emit_event(now, tool_name, arch_name, success, auth_failed, caller)
 
-    def _emit_event(self, now, tool, arch, success, auth_failed, caller) -> None:
+    def begin_call(self, tool: str, args: Optional[dict] = None) -> None:
+        """Mark the start of a tool call so its event carries input, output, duration."""
+        _CALL.active = {"tool": tool, "input": _clip(args), "t0": time.time()}
+        _CALL.pending = None
+
+    def end_call(self, output=None, error: Optional[str] = None) -> None:
+        a = getattr(_CALL, "active", None)
+        pend = getattr(_CALL, "pending", None)
+        _CALL.active = _CALL.pending = None
+        if a is None:
+            return
+        dur = time.time() - a["t0"]
+        if pend is None:  # tool never called record_tool_call: still trace it
+            pend = (time.time(), a["tool"], "", error is None, False,
+                    (os.getenv("TA_MCP_CALLER") or "mcp-stdio").strip()[:64])
+        self._emit_event(*pend, io={"input": a["input"],
+                                    "output": _clip(output if error is None else {"error": error}),
+                                    "duration_s": round(dur, 4)})
+
+    def _emit_event(self, now, tool, arch, success, auth_failed, caller, io=None) -> None:
         """Best-effort mcp_tool_call event so MCP activity reaches Langfuse.
 
         Never raises: observability must not break a tool call (Principle 6).
@@ -164,7 +197,7 @@ class MCPAccessLogger:
                 ts=_dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat(),
                 payload={"tool": tool, "architecture": arch, "success": success,
                          "auth_failed": auth_failed, "caller_id": caller, "source": "mcp",
-                         "session_id": _process_session()},
+                         "session_id": _process_session(), **(io or {})},
             ))
             self._broker.flush()
         except Exception:
