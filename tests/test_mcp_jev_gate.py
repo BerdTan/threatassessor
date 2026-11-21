@@ -60,6 +60,17 @@ _stub_mcp()
 
 from mcp_server import server  # noqa: E402
 
+# Un-pollute: the stubs were only needed to import server. Leaving them in
+# sys.modules made every later `import mcp_server.access_logger` in the same
+# pytest session resolve to an empty module (found in Entry 264 step 5).
+import mcp_server as _pkg  # noqa: E402
+for _n in ("job_client", "access_logger"):
+    _full = f"mcp_server.{_n}"
+    if getattr(sys.modules.get(_full), "__file__", None) is None:
+        sys.modules.pop(_full, None)
+        if hasattr(_pkg, _n):
+            delattr(_pkg, _n)
+
 # Import the behavioral gate too
 _mcp_behavioral_gate = server._mcp_behavioral_gate
 
