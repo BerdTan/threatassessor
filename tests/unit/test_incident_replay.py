@@ -92,3 +92,47 @@ def test_model_probe_is_detected_but_response_is_alert_only():
 def test_force_mode_escalation_costs_more_than_a_plain_request():
     assert sg.request_weight("analyze-stream", force_mode="full_moe") > \
            sg.request_weight("analyze-stream", force_mode=None)
+
+
+class TestSessionCorrelation:
+    """Langfuse sessions: runs and tool calls of one client group under one session."""
+
+    def test_header_wins_else_caller_day_bucket(self):
+        from chatbot.harness.caller_context import build_caller_context as b
+        a = b({"TM-CALLER": "c1", "TM-SESSION": "job-42"}, "h", today="2026-11-21")
+        assert a["session_id"] == "job-42" and a["session_asserted"] is True
+        d = b({"TM-CALLER": "c1"}, "h", today="2026-11-21")
+        assert d["session_id"] == "c1:2026-11-21" and d["session_asserted"] is False
+
+    def test_session_is_ascii_and_bounded(self):
+        from chatbot.harness.caller_context import build_caller_context as b
+        s = b({"TM-SESSION": "é" * 500 + "x"}, "h")["session_id"]
+        assert s.isascii() and len(s) <= 64
+
+    def test_clients_share_one_process_session(self, monkeypatch):
+        monkeypatch.delenv("TA_SESSION", raising=False)
+        from mcp_server import job_client
+        from taclaw import cli
+        a, b = job_client._headers()["TM-SESSION"], cli._headers({"api_key": "k"})["TM-SESSION"]
+        assert a == b and a.startswith("sess-")
+
+    def test_sink_scopes_spans_with_session_and_user(self, monkeypatch):
+        """The Langfuse sink must wrap span creation in propagate_attributes."""
+        import langfuse
+        from chatbot.harness.event_broker import HarnessEvent
+        from chatbot.harness.sinks import LangfuseSink
+        seen = []
+
+        class _Ctx:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        monkeypatch.setattr(langfuse, "propagate_attributes", lambda **kw: (seen.append(kw), _Ctx())[1])
+        sink = LangfuseSink.__new__(LangfuseSink)
+        sink._lf, sink._trace = object(), None
+        monkeypatch.setattr(sink, "_should_handle", lambda e: True, raising=False)
+        monkeypatch.setattr(sink, "_emit", lambda e: None, raising=False)
+        sink.emit(HarnessEvent("run_start", "harness", "r" * 32, "t",
+                               {"session_id": "s-1", "caller_id": "u-1"}))
+        sink.emit(HarnessEvent("critic_generation", "x", "r" * 32, "t", {}))  # later event keeps scope
+        assert seen == [{"session_id": "s-1", "user_id": "u-1"}] * 2

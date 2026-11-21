@@ -11,7 +11,8 @@ def _gen(run_id, p, c, cost):
 class TestCallerContext:
     def test_asserted_label_used(self):
         c = build_caller_context({"TM-CALLER": "ci-bot"}, "1.2.3.4", "rest")
-        assert c == {"caller_id": "ci-bot", "caller_asserted": True, "source": "rest"}
+        assert c["caller_id"] == "ci-bot" and c["caller_asserted"] is True and c["source"] == "rest"
+        assert c["session_id"].startswith("ci-bot:") and c["session_asserted"] is False
 
     def test_header_case_insensitive(self):
         assert build_caller_context({"tm-caller": "x"})["caller_id"] == "x"

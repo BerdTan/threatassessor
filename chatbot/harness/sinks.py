@@ -216,9 +216,33 @@ class LangfuseSink(BaseSink):
         except Exception as exc:
             logger.warning(f"LangfuseSink: init failed (non-fatal): {exc}")
 
+    def _scope(self, event: "HarnessEvent"):
+        """Langfuse trace-level session/user for every span of this event.
+
+        Session = the caller's ``TM-SESSION`` (or caller:date); user = caller_id.
+        Remembered from run_start so later events of the same run carry it too.
+        """
+        import contextlib
+        p = event.payload
+        if event.event_type in ("run_start", "mcp_tool_call"):
+            self._session = (p.get("session_id") or "")[:200]
+            self._user = (p.get("caller_id") or "")[:200]
+        sid, uid = getattr(self, "_session", ""), getattr(self, "_user", "")
+        if not (sid or uid):
+            return contextlib.nullcontext()
+        try:
+            from langfuse import propagate_attributes
+            return propagate_attributes(session_id=sid or None, user_id=uid or None)
+        except Exception:
+            return contextlib.nullcontext()
+
     def emit(self, event: "HarnessEvent") -> None:
         if self._lf is None or not self._should_handle(event):
             return
+        with self._scope(event):
+            self._emit(event)
+
+    def _emit(self, event: "HarnessEvent") -> None:
         try:
             p = event.payload
             if event.event_type == "run_start":

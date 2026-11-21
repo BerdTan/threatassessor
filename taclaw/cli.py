@@ -83,11 +83,21 @@ def _get_api_key(cfg: dict) -> str:
     )
 
 
+def _process_session() -> str:
+    try:
+        from chatbot.harness.caller_context import process_session
+        return process_session()
+    except Exception:  # standalone install without the server package
+        import uuid
+        return os.environ.get("TA_SESSION") or f"sess-{uuid.uuid4().hex[:12]}"
+
+
 def _headers(cfg: dict) -> dict:
     return {
         "TM-API-KEY": _get_api_key(cfg),
         "Content-Type": "application/json",
         "TM-CALLER": os.environ.get("TA_CALLER", "taclaw-cli"),  # self-asserted
+        "TM-SESSION": _process_session(),
     }
 
 

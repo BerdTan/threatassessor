@@ -29,6 +29,8 @@ def _headers() -> Dict[str, str]:
         h["TM-API-KEY"] = key
     # Self-asserted label so the REST spend gate can attribute MCP traffic (Entry 264).
     h["TM-CALLER"] = os.environ.get("TA_MCP_CALLER", "mcp-stdio")
+    from chatbot.harness.caller_context import process_session
+    h["TM-SESSION"] = process_session()  # groups this worker's calls in Langfuse
     return h
 
 

@@ -621,6 +621,7 @@ class ThreatAssessorHarness:
                         "routing_mode": ctx.get("routing_mode", ""),
                         "caller_id": ctx.get("caller_id", ""),
                         "caller_asserted": ctx.get("caller_asserted", False),
+                        "session_id": ctx.get("session_id", ""),
                         "source": ctx.get("source", "unknown"),
                     },
                 ))
@@ -765,6 +766,7 @@ class ThreatAssessorHarness:
                         "arch_type": ctx.get("arch_metadata", {}).get("arch_type", ""),
                         "aivss_composite": getattr(ctx.get("_aivss_score"), "overall", None),
                         "caller_id": ctx.get("caller_id", ""),
+                        "session_id": ctx.get("session_id", ""),
                         "source": ctx.get("source", "unknown"),
                         "usage": _broker.usage(ctx.get("_run_id", "")),
                     },

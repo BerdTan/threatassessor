@@ -98,6 +98,11 @@ class MCPAccessSignals:
         return asdict(self)
 
 
+def _process_session() -> str:
+    from chatbot.harness.caller_context import process_session
+    return process_session()
+
+
 class MCPAccessLogger:
     """Thread-safe rolling-window tracker for MCP tool call patterns.
 
@@ -158,7 +163,8 @@ class MCPAccessLogger:
                 run_id=self._session_id,  # must be 32-hex for Langfuse v4 trace_context
                 ts=_dt.datetime.fromtimestamp(now, _dt.timezone.utc).isoformat(),
                 payload={"tool": tool, "architecture": arch, "success": success,
-                         "auth_failed": auth_failed, "caller_id": caller, "source": "mcp"},
+                         "auth_failed": auth_failed, "caller_id": caller, "source": "mcp",
+                         "session_id": _process_session()},
             ))
             self._broker.flush()
         except Exception:

@@ -58,6 +58,8 @@ class MCPClient:
         if self._key:
             h["TM-API-KEY"] = self._key
         h["TM-CALLER"] = os.environ.get("TA_CALLER", "mcp-connector")  # self-asserted
+        from chatbot.harness.caller_context import process_session
+        h["TM-SESSION"] = process_session()
         return h
 
     def _get(self, path: str, params: Optional[Dict] = None) -> Any:

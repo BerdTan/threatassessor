@@ -72,8 +72,8 @@ def spend_gate(entry_point: str):
         )
         if not verdict.allowed:
             logging.getLogger(__name__).warning(
-                "spend_gate %s entry=%s caller=%s reason=%s",
-                verdict.action, entry_point, caller["caller_id"], verdict.reason,
+                "spend_gate %s entry=%s caller=%s session=%s reason=%s",
+                verdict.action, entry_point, caller["caller_id"], caller["session_id"], verdict.reason,
             )
             raise HTTPException(
                 status_code=(
