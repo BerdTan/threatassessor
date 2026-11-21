@@ -3,8 +3,8 @@
 One function decides whether a spend entry point may proceed. It returns a
 verdict on the response ladder (allow < steer < throttle < block < kill), not a
 boolean, so graduated responses can be added without changing callers.
-Only ``allow``, ``block`` and ``kill`` are produced today; ``steer`` and
-``throttle`` are reserved for the later steps of the plan.
+``allow``, ``throttle`` (per-caller soft limit, see spend_ledger), ``block`` and
+``kill`` are produced today; ``steer`` is reserved for a later step.
 
 Principle 5: the decision lives in code. Principle 3: deterministic, no LLM.
 Fail closed: a policy file that is missing, unparseable or malformed yields
@@ -75,11 +75,38 @@ def _load(policy_path: Any) -> tuple[Optional[dict], str]:
         return None, f"policy_unreadable: {type(exc).__name__}"
 
 
+def _over_limit(limits: Any, caller_id: str, ledger: Any) -> str:
+    """Reason string if the caller is over a configured soft limit, else "".
+
+    ``caller_limits: {window_s, max_requests, max_tokens}``; absent or empty
+    means no limit. A malformed limits block raises, and ``check`` turns that
+    into ``block`` (fail closed), not into silently unlimited spend.
+    """
+    if not limits or not caller_id:
+        return ""
+    if not isinstance(limits, dict):
+        raise ValueError("caller_limits not a mapping")
+    window = float(limits.get("window_s", 60))
+    if window <= 0:
+        raise ValueError("window_s must be positive")
+    if ledger is None:
+        from chatbot.harness.spend_ledger import LEDGER as ledger
+    t = ledger.totals(caller_id, window)
+    mr, mt = limits.get("max_requests"), limits.get("max_tokens")
+    if mr is not None and t["requests"] >= int(mr):
+        return f"throttle: {t['requests']} requests in {window:g}s (limit {int(mr)})"
+    if mt is not None and t["tokens"] >= int(mt):
+        return f"throttle: {t['tokens']} tokens in {window:g}s (limit {int(mt)})"
+    return ""
+
+
 def check(
     entry_point: str,
     architecture: str = "",
     caller_id: str = "",
     policy_path: Any = None,
+    ledger: Any = None,
+    enforce_limits: bool = True,
 ) -> Verdict:
     """Return a verdict for one spend attempt. Never raises."""
 
@@ -101,6 +128,11 @@ def check(
         blocked = bouncer.get("blocked_architectures") or []
         if architecture and architecture in blocked:
             return v("block", f"architecture '{architecture}' in blocked_architectures")
+        # Limits apply at the front door only: the pipeline stage re-checks policy
+        # after the route already counted this request, so it passes False.
+        throttled = _over_limit(bouncer.get("caller_limits"), caller_id, ledger) if enforce_limits else ""
+        if throttled:
+            return v("throttle", throttled)
         return v("allow")
     except Exception as exc:
         return v("block", f"policy_unreadable: {type(exc).__name__}")

@@ -157,3 +157,100 @@ class TestLiveRoute:
         c = self._client(monkeypatch, tmp_path, "bouncer:\n  kill_switch: true\n")
         r = c.post("/api/v1/boxing/run", json={}, headers={"TM-API-KEY": "wrong"})
         assert r.status_code == 401
+
+
+class _Clock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+
+class TestThrottle:
+    """Per-caller soft limit (Entry 264 step 3): verdict is throttle, not block."""
+
+    LIMITS = "bouncer:\n  caller_limits: {window_s: 60, max_requests: 2, max_tokens: 100}\n"
+
+    def _ledger(self):
+        from chatbot.harness.spend_ledger import SpendLedger
+        clk = _Clock()
+        return SpendLedger(clock=clk), clk
+
+    def test_under_limit_allows(self, tmp_path):
+        led, _ = self._ledger()
+        led.record("a", requests=1)
+        v = sg.check("x", caller_id="a", policy_path=_policy(tmp_path, self.LIMITS), ledger=led)
+        assert v.action == "allow"
+
+    def test_request_limit_throttles(self, tmp_path):
+        led, _ = self._ledger()
+        led.record("a", requests=2)
+        v = sg.check("x", caller_id="a", policy_path=_policy(tmp_path, self.LIMITS), ledger=led)
+        assert v.action == "throttle" and "requests" in v.reason and not v.allowed
+
+    def test_token_limit_throttles(self, tmp_path):
+        led, _ = self._ledger()
+        led.record("a", tokens=100)
+        v = sg.check("x", caller_id="a", policy_path=_policy(tmp_path, self.LIMITS), ledger=led)
+        assert v.action == "throttle" and "tokens" in v.reason
+
+    def test_other_caller_unaffected(self, tmp_path):
+        led, _ = self._ledger()
+        led.record("a", requests=5)
+        assert sg.check("x", caller_id="b", policy_path=_policy(tmp_path, self.LIMITS), ledger=led).allowed
+
+    def test_window_slides(self, tmp_path):
+        led, clk = self._ledger()
+        led.record("a", requests=2)
+        clk.t += 61
+        assert sg.check("x", caller_id="a", policy_path=_policy(tmp_path, self.LIMITS), ledger=led).allowed
+
+    def test_no_limits_configured_means_allow(self, tmp_path):
+        led, _ = self._ledger()
+        led.record("a", requests=999)
+        assert sg.check("x", caller_id="a", policy_path=_policy(tmp_path, "bouncer: {}\n"), ledger=led).allowed
+
+    def test_malformed_limits_fail_closed(self, tmp_path):
+        led, _ = self._ledger()
+        p = _policy(tmp_path, "bouncer:\n  caller_limits: {window_s: -5, max_requests: 1}\n")
+        assert sg.check("x", caller_id="a", policy_path=p, ledger=led).action == "block"
+
+    def test_kill_outranks_throttle(self, tmp_path):
+        led, _ = self._ledger()
+        led.record("a", requests=9)
+        p = _policy(tmp_path, "bouncer:\n  kill_switch: true\n  caller_limits: {max_requests: 1}\n")
+        assert sg.check("x", caller_id="a", policy_path=p, ledger=led).action == "kill"
+
+    def test_pipeline_stage_does_not_double_throttle(self, tmp_path):
+        led, _ = self._ledger()
+        led.record("a", requests=2)
+        v = sg.check("pipeline", caller_id="a", policy_path=_policy(tmp_path, self.LIMITS),
+                     ledger=led, enforce_limits=False)
+        assert v.allowed
+
+    def test_ledger_bounded(self):
+        from chatbot.harness import spend_ledger as sl
+        led, _ = self._ledger()
+        for i in range(sl._MAX_CALLERS + 10):
+            led.record(f"c{i}", requests=1)
+        assert len(led._events) <= sl._MAX_CALLERS
+
+
+class TestThrottleLive:
+    def test_second_request_gets_429_then_other_caller_passes(self, monkeypatch, tmp_path):
+        from fastapi.testclient import TestClient
+        from chatbot.api.app import create_app
+        from chatbot.harness.spend_ledger import LEDGER
+        LEDGER.reset()
+        monkeypatch.setenv("API_KEY", "k")
+        monkeypatch.setattr(sg, "POLICY_PATH", _policy(
+            tmp_path, "bouncer:\n  caller_limits: {window_s: 60, max_requests: 1}\n"))
+        c = TestClient(create_app())
+        h = {"TM-API-KEY": "k", "TM-CALLER": "noisy"}
+        c.post("/api/v1/boxing/run", json={}, headers=h)  # counted; body may 4xx later
+        r = c.post("/api/v1/boxing/run", json={}, headers=h)
+        assert r.status_code == 429 and r.json()["detail"]["action"] == "throttle"
+        r2 = c.post("/api/v1/boxing/run", json={}, headers={"TM-API-KEY": "k", "TM-CALLER": "quiet"})
+        assert r2.status_code != 429
+        LEDGER.reset()

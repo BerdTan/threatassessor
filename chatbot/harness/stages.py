@@ -488,6 +488,7 @@ class BouncerStage(PipelineStage):
             "pipeline",
             architecture=ctx.get("architecture_name", ""),
             caller_id=ctx.get("caller_id", ""),
+            enforce_limits=False,  # the route already counted this request
         )
         if not _v.allowed:
             reason = _v.reason

@@ -772,6 +772,12 @@ class ThreatAssessorHarness:
                 _broker.flush()
             except Exception:
                 pass
+        try:  # feed the per-caller ledger (tokens only where the harness counts them)
+            from chatbot.harness.spend_ledger import LEDGER as _L
+            _tok = int((_broker.usage(ctx.get("_run_id", "")) if _broker else {}).get("tokens", 0))
+            _L.record(ctx.get("caller_id", ""), tokens=_tok)
+        except Exception:
+            pass
 
         return ctx
 

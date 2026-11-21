@@ -79,9 +79,14 @@ def spend_gate(entry_point: str):
                 status_code=(
                     status.HTTP_503_SERVICE_UNAVAILABLE
                     if verdict.action == "kill"
+                    else status.HTTP_429_TOO_MANY_REQUESTS
+                    if verdict.action == "throttle"
                     else status.HTTP_403_FORBIDDEN
                 ),
                 detail={"blocked": True, "action": verdict.action, "reason": verdict.reason},
             )
+        from chatbot.harness.spend_ledger import LEDGER
+
+        LEDGER.record(caller["caller_id"], requests=1)
 
     return spend_gate

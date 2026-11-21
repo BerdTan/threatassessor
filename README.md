@@ -10,7 +10,7 @@ Submit a Mermaid (`.mmd`) diagram, a Git repo, or IaC files and receive a MITRE 
 - **TA Brain** — self-growing knowledge graph that predicts findings for known topology patterns and drives smart routing
 - **TAclaw** — autonomous repo assessment: point at a Git URL or directory; adapters (TF / CF / OAI / Prose / MMD) convert it to a graph and run the full pipeline; usable via REST, MCP tool, or `ta analyze` CLI
 - **TMbench** — open benchmark for structured threat model output; 10 reference architectures across four tiers (T1–T4); TATB rubric (max 13 with ATLAS bonus); scores any tool; leaderboard at `docs/tmbench/`
-- **TMeval** — adversarial red-team probe; outside-in (8 adversarial MMDs against the governance gate) + inside-out (21 injection cases, 3 threat-actor entry points into RuleEvaluator and BouncerStage); exits 0/1 for CI
+- **TMeval** — adversarial red-team probe; outside-in (8 adversarial MMDs against the governance gate) + inside-out (21 injection cases, 3 threat-actor entry points into RuleEvaluator and BouncerStage) + spend-gate probe (kill switch, fail-closed policy, per-route gate coverage, with a mutation check that the old fail-open gate is caught); exits 0/1 for CI
 
 ## Architecture
 
@@ -30,6 +30,7 @@ flowchart TD
 
     mcp_srv["MCP Server\n18 tools"]
     adpt["Adapter Registry\n(TF · CF · OAI · Prose · MMD)"]
+    sg["Spend Gate\nallow · throttle · block · kill\nfail-closed · 18 spend routes"]
     gov["Governance\n+ injection check"]
     jev["Jev  (typesafe.ai)\nSystem 1 gate"]
 
@@ -75,7 +76,8 @@ flowchart TD
     mcp_srv --> rest_api
     dash_ui --> rest_api
 
-    rest_api --> gov
+    rest_api --> sg
+    sg --> gov
     gov --> sr
     brn_o -.->|routing signals| sr
 
@@ -112,7 +114,7 @@ flowchart TD
 
     subgraph Bench["Benchmarking Layer"]
         tmbench["TMbench\n10 arches · TATB rubric · max 13\nleaderboard: docs/tmbench/"]
-        tmeval["TMeval\nadversarial probe\noutside-in + inside-out · CI exit 0/1"]
+        tmeval["TMeval\nadversarial probe\noutside-in + inside-out + spend-gate · CI exit 0/1"]
     end
 
     rest_api -.->|benchmark run| tmbench
@@ -121,6 +123,7 @@ flowchart TD
     style Bench fill:#fef9c3,stroke:#ca8a04
     style tmbench fill:#fefce8,stroke:#ca8a04
     style tmeval fill:#fefce8,stroke:#ca8a04
+    style sg fill:#fee2e2,stroke:#dc2626
     style Fleet fill:#f3e8ff,stroke:#7c3aed
     style supervisor fill:#ede9fe,stroke:#7c3aed
     style tool_reg fill:#ede9fe,stroke:#7c3aed
@@ -131,6 +134,8 @@ flowchart TD
 ```
 
 Three pipeline modes: **brain_fast** serves predictions from the TA Brain for known topology patterns (~50ms); **api_only** runs the deterministic analysis pipeline; **full_moe** adds the 5-critic expert panel. The Smart Router selects the mode automatically based on Brain confidence and AIVSS history. **Jev** (typesafe.ai) augments eight decision points as a fast System 1 gate: governance injection detection, smart router cold-start, PolicyBroker critic pre-screening, adapter format fallback, TATB quality labelling, investigation pre-flight, technique applicability filtering, and CISO posture signal at export — all non-fatal; every point falls back silently if Jev is unavailable.
+
+Every route that can spend LLM tokens passes a single **Spend Gate** first. It returns a verdict on a ladder (`allow < steer < throttle < block < kill`), not a boolean: `kill` (kill switch, HTTP 503), `block` (blocked architecture, or a policy file that is missing or unreadable, HTTP 403), `throttle` (per-caller soft limit, HTTP 429). It fails closed, and tests assert that each of the 18 spend routes carries it. Per-caller limits key on a self-asserted `TM-CALLER` label, so they stop accidental loops, not a determined abuser; per-caller keys are planned. `steer` is reserved and not yet produced.
 
 On **BLOCK**, the pipeline hands off to the **Fleet Layer**: a managed agent loop where an LLM decides which tool to call next based on what the previous tool returned. `TAclawInvestigationAgent` queries five tools (block signals, brain patterns, rule detail, pipeline context, synthesis) and writes a remediation report to `report/taclaw_investigator/`. Fleet output is kept separate from pipeline output by design.
 
@@ -223,6 +228,8 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 **MCP transport** — stdio (default) has no network exposure. Network transport (`--transport sse` / `--transport streamable-http`) requires `TM_MCP_KEY`.
 
+**Spend gate** — one fail-closed gate on every spend route; the kill switch and per-caller limits live in `policies/agent_governance.yaml` under `bouncer:`. Limits are soft until per-caller keys exist.
+
 **Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 70 DETECT rules emit OCSF events for SOC consumption.
 
 ## Go deeper
@@ -238,10 +245,11 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 ## Build story
 
-42 parts on Medium, from diagram to detection layer, with every design decision exposed. The full table is in [`docs/BLOG_INDEX.md`](docs/BLOG_INDEX.md).
+43 parts on Medium, from diagram to detection layer, with every design decision exposed. The full table is in [`docs/BLOG_INDEX.md`](docs/BLOG_INDEX.md).
 
 Latest:
 
 - Part 40: [The Scanner Saw Clean. The Pipeline Already Had.](https://medium.com/@breadtan/the-scanner-saw-clean-the-pipeline-already-had-521b8c2fc678)
 - Part 41: [I Built the Benchmark. Then Lost to It.](https://medium.com/@breadtan/i-built-the-benchmark-then-lost-to-it-c611de098146)
 - Part 42: [My Incident Heatmap Was Lying to Me: Fixing It Produced New Detection Rules](https://medium.com/@breadtan/my-incident-heatmap-was-lying-to-me-fixing-it-produced-new-detection-rules-8ab099e6a439)
+- Part 43: [Built a Gym for My Skills. It Found Problems I Had Shipped.](https://medium.com/@breadtan/built-a-gym-for-my-skills-it-found-problems-i-had-shipped-4a004880719e)
