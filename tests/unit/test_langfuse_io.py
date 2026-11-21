@@ -135,3 +135,12 @@ def test_token_report_reads_usage_from_run_metadata():
     from scripts.bench.langfuse_token_report import _Run
     r = _Run(SimpleNamespace(metadata={"usage": {"tokens": 1234, "cost_usd": 0.5}}, output=None))
     assert r.total_tokens == 1234 and r.total_cost == 0.5
+
+
+def test_run_complete_writes_output_on_the_root_observation():
+    s = _sink()
+    tr = MagicMock(); tr.trace_id = "f" * 32
+    s._lf.start_observation.return_value = tr
+    s.emit(HarnessEvent("run_start", "h", "r", "t", {"architecture": "a", "scenario": "api_only"}))
+    s.emit(HarnessEvent("run_complete", "h", "r", "t", {"confidence": 0.9, "errors": []}))
+    assert tr.update.call_args.kwargs["output"] == {"confidence": 0.9, "errors": []}

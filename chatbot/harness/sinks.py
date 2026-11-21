@@ -443,13 +443,14 @@ class LangfuseSink(BaseSink):
                 child.end()
 
             elif event.event_type == "run_complete" and self._trace:
-                self._trace.set_trace_io(
-                    output={
-                        "confidence": p.get("confidence"),
-                        "errors":     p.get("errors", []),
-                    },
-                )
-                self._trace.update(metadata={
+                _out = {
+                    "confidence": p.get("confidence"),
+                    "errors":     p.get("errors", []),
+                }
+                self._trace.set_trace_io(output=_out)
+                # Also on the root observation itself: that is what observations.get_many
+                # (the only run reader left since trace.get returns 410) returns.
+                self._trace.update(output=_out, metadata={
                     "routing_mode":    self._routing_mode,
                     "arch_type":       p.get("arch_type", ""),
                     "aivss_composite": p.get("aivss_composite"),

@@ -633,6 +633,7 @@ def validate_detection_analytics(
                     f"but no behavioral analytics or anomaly detection control is present ({hint}). "
                     f"Logging captures events; behavioral analytics detects abnormal patterns."
                 ),
+                impact="Abnormal data access on T1005/T1213 paths may go unnoticed.",
                 confidence_penalty=0.02,
                 details={
                     "data_nodes": sorted(data_nodes_needing_analytics),
@@ -667,6 +668,7 @@ def validate_detection_analytics(
                     "API Gateway node — control placement against T1059/T1190/T1203 is unclear. "
                     "Confirm which path hops the gateway defends."
                 ),
+                impact="Gateway control placement against the listed techniques cannot be confirmed.",
                 confidence_penalty=0.01,
                 details={
                     "fix": "Map API Gateway node explicitly in at least one attack path to confirm coverage scope",
@@ -729,6 +731,7 @@ def validate_external_dependencies(
                 f"SBOM, or third-party assessment control is present. "
                 f"All critic lenses focus on internal architecture — external dependency risk is a structural blindspot."
             ),
+            impact="Third-party compromise is not covered by any listed control.",
             confidence_penalty=0.02,
             details={
                 "supply_chain_score": supply_chain_score,
@@ -747,6 +750,7 @@ def validate_external_dependencies(
                 "Security-focused critic lenses do not evaluate operational resilience — "
                 "availability impact of security controls is a known structural blindspot."
             ),
+            impact="Availability impact of the security controls is not evaluated.",
             confidence_penalty=0.01,
             details={
                 "fix": "Add backup/DR/BCP controls; evaluate how security controls affect system availability",

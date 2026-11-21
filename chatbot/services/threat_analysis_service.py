@@ -158,7 +158,12 @@ class ThreatAnalysisService(BaseService):
             if include_validation and architecture_path:
                 try:
                     from chatbot.modules.completeness_validator import validate_completeness
-                    validation = validate_completeness(arch_name)
+                    # Takes the ground-truth dict, not the architecture name (a str raised
+                    # "'str' object has no attribute 'get'" and was swallowed below).
+                    gt = getattr(analysis_result, "data", None)
+                    if not isinstance(gt, dict):
+                        raise TypeError("analysis result carries no ground-truth dict")
+                    validation = validate_completeness(gt)
                     result_data["validation"] = validation
                 except Exception as e:
                     self.logger.warning(f"Validation failed: {e}")
