@@ -33,6 +33,7 @@ EVENT_TYPES = frozenset({
     "sm_verdicts",
     "run_complete",
     "mcp_tool_call",
+    "gate_verdict",
 })
 
 

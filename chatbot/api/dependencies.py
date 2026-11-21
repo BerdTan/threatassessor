@@ -47,6 +47,30 @@ async def verify_api_key(
     return tm_api_key
 
 
+def _emit_verdict(verdict, caller: dict, architecture: str = "") -> None:
+    """Best-effort gate_verdict event to Langfuse. Never raises (Principle 6)."""
+    try:
+        import datetime as _dt
+        import uuid
+
+        from chatbot.harness.event_broker import EventBrokerCritic, HarnessEvent
+
+        broker = EventBrokerCritic()
+        if not broker._enabled:
+            return
+        broker.emit(HarnessEvent(
+            event_type="gate_verdict", source=verdict.entry_point, run_id=uuid.uuid4().hex,
+            ts=_dt.datetime.now(_dt.timezone.utc).isoformat(),
+            payload={"action": verdict.action, "reason": verdict.reason,
+                     "entry_point": verdict.entry_point, "architecture": architecture,
+                     "caller_id": caller.get("caller_id", ""),
+                     "session_id": caller.get("session_id", ""), "source": "rest"},
+        ))
+        broker.flush()
+    except Exception:
+        pass
+
+
 def spend_gate(entry_point: str):
     """Dependency factory: fail-closed spend gate for a route (Entry 264).
 
@@ -75,6 +99,7 @@ def spend_gate(entry_point: str):
                 "spend_gate %s entry=%s caller=%s session=%s reason=%s",
                 verdict.action, entry_point, caller["caller_id"], caller["session_id"], verdict.reason,
             )
+            _emit_verdict(verdict, caller, request.path_params.get("architecture_name", ""))
             raise HTTPException(
                 status_code=(
                     status.HTTP_503_SERVICE_UNAVAILABLE

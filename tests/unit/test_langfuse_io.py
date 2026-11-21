@@ -77,3 +77,36 @@ def test_real_sdk_root_span_has_no_parent_and_carries_io():
     lf = Langfuse(public_key="pk-x", secret_key="sk-x", host="http://127.0.0.1:9")
     sp = lf.start_observation(name="mcp:x", as_type="tool", input={"a": 1})
     assert sp._otel_span.parent is None
+
+
+def test_gate_verdict_becomes_guardrail_root_span():
+    s = _sink()
+    s.emit(HarnessEvent("gate_verdict", "boxing-run", "r", "t", {
+        "action": "throttle", "reason": "throttle: 2 requests in 60s (limit 2)",
+        "entry_point": "boxing-run", "caller_id": "noisy", "session_id": "sess-9"}))
+    kw = s._lf.start_observation.call_args.kwargs
+    assert "trace_context" not in kw and kw["as_type"] == "guardrail"
+    assert kw["name"] == "gate:throttle" and kw["level"] == "WARNING"
+    assert kw["output"]["action"] == "throttle"
+
+
+def test_gate_refusal_on_a_route_emits_a_verdict(monkeypatch, tmp_path):
+    """A real 429 from the route must reach the emitter (not just the sink mapping)."""
+    from fastapi.testclient import TestClient
+    from chatbot.api import dependencies as deps
+    from chatbot.api.app import create_app
+    from chatbot.harness import spend_gate as sg
+    from chatbot.harness.spend_ledger import LEDGER
+    LEDGER.reset()
+    seen = []
+    monkeypatch.setattr(deps, "_emit_verdict", lambda v, c, a="": seen.append((v.action, c["caller_id"])))
+    pol = tmp_path / "p.yaml"
+    pol.write_text("bouncer:\n  caller_limits: {window_s: 60, max_requests: 1}\n")
+    monkeypatch.setenv("API_KEY", "k")
+    monkeypatch.setattr(sg, "POLICY_PATH", pol)
+    c = TestClient(create_app())
+    h = {"TM-API-KEY": "k", "TM-CALLER": "noisy"}
+    c.post("/api/v1/boxing/run", json={}, headers=h)
+    assert c.post("/api/v1/boxing/run", json={}, headers=h).status_code == 429
+    assert seen == [("throttle", "noisy")]
+    LEDGER.reset()

@@ -205,7 +205,7 @@ event_broker:
       host: ""
       public_key: ""
       secret_key: ""
-      events: ["run_start", "run_complete", "critic_trace", "governance", "aivss", "mcp_trace"]
+      events: ["run_start", "run_complete", "critic_trace", "governance", "aivss", "mcp_trace", "gate_trace"]
     webhook:
       enabled: false
       url: ""

@@ -43,6 +43,7 @@ class BaseSink(ABC):
             "governance":   {"governance_complete"},
             "aivss":        {"aivss_complete", "aivss_gate"},
             "mcp_trace":    {"mcp_tool_call"},
+            "gate_trace":   {"gate_verdict"},
         }
         for preset, types in presets.items():
             if preset in self._subscribed and event_type in types:
@@ -229,7 +230,7 @@ class LangfuseSink(BaseSink):
         """
         import contextlib
         p = event.payload
-        if event.event_type in ("run_start", "mcp_tool_call"):
+        if event.event_type in ("run_start", "mcp_tool_call", "gate_verdict"):
             self._session = (p.get("session_id") or "")[:200]
             self._user = (p.get("caller_id") or "")[:200]
         sid, uid = getattr(self, "_session", ""), getattr(self, "_user", "")
@@ -279,6 +280,21 @@ class LangfuseSink(BaseSink):
                 )
                 self._current_trace = self._trace
                 self._trace_id = getattr(self._trace, "trace_id", None)
+
+            elif event.event_type == "gate_verdict":
+                # A refusal (throttle/block/kill) as its own root span, so it shows in the
+                # caller's session next to the runs it stopped. Level marks severity.
+                span = self._lf.start_observation(
+                    name=f"gate:{p.get('action', '')}",
+                    as_type="guardrail",
+                    input={"entry_point": p.get("entry_point", ""),
+                           "architecture": p.get("architecture", "")},
+                    output={"action": p.get("action", ""), "reason": p.get("reason", "")},
+                    metadata={k: v for k, v in p.items() if k not in ("reason",)},
+                    level="ERROR" if p.get("action") in ("block", "kill") else "WARNING",
+                    status_message=p.get("reason", "")[:500],
+                )
+                span.end()
 
             elif event.event_type == "mcp_tool_call":
                 # One real root span per tool call, with the call's input/output and its

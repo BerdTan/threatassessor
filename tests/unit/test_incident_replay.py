@@ -145,3 +145,30 @@ def test_force_mode_reaches_the_generator_and_is_charged():
     assert "force_mode" in inspect.signature(streaming.analyze_with_progress).parameters
     assert "force_mode=force_mode" in inspect.getsource(streaming.analyze_architecture_stream)
     assert "request_weight" in inspect.getsource(streaming.analyze_with_progress)
+
+
+def test_forced_full_moe_is_charged_through_the_live_route(monkeypatch, tmp_path):
+    """Drive /analyze-stream with force_mode=full_moe and a stubbed pipeline; the caller's
+    ledger must show the extra weight (replaces the source-inspection test as the proof)."""
+    import json
+    from fastapi.testclient import TestClient
+    from chatbot.api.app import create_app
+    from chatbot.harness import spend_gate as sg
+    from chatbot.harness.spend_ledger import LEDGER
+    LEDGER.reset()
+    pol = tmp_path / "p.yaml"
+    pol.write_text("bouncer: {}\n")
+    monkeypatch.setenv("API_KEY", "k")
+    monkeypatch.setattr(sg, "POLICY_PATH", pol)
+    class _Boom:  # stub: the charge happens before the pipeline; never spend tokens here
+        def __init__(self, *a, **k):
+            raise RuntimeError("stubbed pipeline")
+
+    import chatbot.modules.harness as _h
+    monkeypatch.setattr(_h, "ThreatAssessorHarness", _Boom)
+    c = TestClient(create_app())
+    c.post("/api/v1/analyze-stream", headers={"TM-API-KEY": "k", "TM-CALLER": "forcer"},
+           data={"force_mode": "full_moe", "mmd_text": "graph TD\nA-->B", "mmd_name": "zz_replay"})
+    t = LEDGER.totals("forcer", 60)
+    assert t["requests"] == 5, t
+    LEDGER.reset()
