@@ -6,6 +6,10 @@ Strategy: Use production data from chatbot/data/ instead of copying fixtures.
 import os
 from pathlib import Path
 
+# Tests must never write traces to the real Langfuse project (Entry 264 step 6:
+# replay tests had sent 24 "prober" spans to the live cloud instance).
+os.environ["LANGFUSE_SKIP"] = "1"
+
 import pytest
 
 from chatbot.modules.mitre import MitreHelper
