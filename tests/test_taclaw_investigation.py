@@ -12,6 +12,7 @@ These tests verify that:
 
 from __future__ import annotations
 
+import tempfile
 import asyncio
 import json
 import unittest
@@ -186,12 +187,15 @@ _FASTAPI_AVAILABLE = _importlib.util.find_spec("fastapi") is not None
 
 
 def _make_artifacts(n=2):
-    from chatbot.adapters import CrawledArtifact
+    from chatbot.adapters.crawler import CrawledArtifact
     arts = []
     for i in range(n):
         a = MagicMock(spec=CrawledArtifact)
         a.path = Path(f"/tmp/fake_{i}.mmd")
         a.adapter_type = "mmd"
+        a.content = "flowchart TB\n A-->B"
+        a.adapter = MagicMock()
+        a.adapter.extract.return_value = MagicMock(nodes=[MagicMock()], edges=[])
         arts.append(a)
     return arts
 
@@ -234,14 +238,15 @@ class TestTAclawWireIn(unittest.IsolatedAsyncioTestCase):
             patch("chatbot.api.routes.taclaw._validate_passport",
                   return_value=(True, "ok", {})),
             patch("chatbot.api.routes.taclaw.RepoCrawler") as MockCrawler,
-            patch("chatbot.api.routes.taclaw.get_settings") as mock_settings,
-            patch("chatbot.api.routes.taclaw.select_mode") as mock_route,
-            patch("chatbot.api.routes.taclaw._preflight_authority_gate",
-                  return_value=MagicMock(preflight={"blocked": False})),
-            patch("chatbot.api.routes.taclaw.ThreatAssessorHarness") as MockHarness,
-            patch("chatbot.api.routes.taclaw.build_export", return_value={"gate": {"result": "BLOCK"}}),
-            patch("chatbot.api.routes.taclaw.build_brain"),
-            patch("chatbot.api.routes.taclaw.query_brain", return_value={}),
+            patch("chatbot.config.get_settings") as mock_settings,
+            patch("chatbot.harness.smart_router.select_mode") as mock_route,
+            patch("chatbot.harness.governance.get_governance_adapter",
+                  return_value=MagicMock(check_preflight=MagicMock(
+                      return_value=MagicMock(preflight={"blocked": False})))),
+            patch("chatbot.harness.controller.ThreatAssessorHarness") as MockHarness,
+            patch("chatbot.modules.ta_exporter.build_export", return_value={"gate": {"result": "BLOCK"}}),
+            patch("chatbot.modules.ta_brain_builder.build_brain"),
+            patch("chatbot.modules.ta_brain_query.query_brain", return_value={}),
             patch("agentic.llm_client.LLMClient",
                   return_value=(investigation_mock_client or _make_synthesis_chat_responses())),
             patch("chatbot.agents.managed.taclaw_investigator._load_brain",
@@ -256,6 +261,8 @@ class TestTAclawWireIn(unittest.IsolatedAsyncioTestCase):
             # Crawler returns fake artifacts
             crawler_instance = MagicMock()
             crawler_instance.crawl.return_value = artifacts
+            merged.to_mmd.return_value = "flowchart TB\n A-->B"
+            crawler_instance.merge_graphs.return_value = merged
             MockCrawler.return_value = crawler_instance
 
             # Smart router → api_only
@@ -266,35 +273,25 @@ class TestTAclawWireIn(unittest.IsolatedAsyncioTestCase):
             mock_route.return_value = routing
 
             # Adapter merging: patch the adapter imports used inside _run_taclaw_job
-            with patch("chatbot.api.routes.taclaw.MermaidAdapter") as MockMmd:
-                mock_graph = MagicMock()
-                mock_graph.nodes = [MagicMock()]
-                mock_graph.edges = []
-                mock_graph.adapter_metadata = merged.adapter_metadata
-                mock_graph.source_trust = "unverified"
-                MockMmd.return_value.parse.return_value = mock_graph
 
-                # Harness raises BlockedPipelineError
-                harness_instance = MagicMock()
-                harness_instance.run_typed.side_effect = blocked_exc
-                MockHarness.return_value = harness_instance
+            harness_instance = MagicMock()
+            harness_instance.run_typed.side_effect = blocked_exc
+            MockHarness.return_value = harness_instance
 
-                # ArchitectureGraph.merge — return our merged mock
-                with patch("chatbot.api.routes.taclaw.ArchitectureGraph") as MockAG:
-                    MockAG.merge.return_value = merged
 
-                    await _run_taclaw_job(
-                        job=job,
-                        target_type="directory",
-                        target="/tmp/fake_arch",
-                        arch_name="injection_test",
-                        ssp_profile="low_risk_cloud",
-                        enrich_from_github=False,
-                        github_repo=None,
-                        passport=passport,
-                        passport_token="tok_test",
-                    )
+            await _run_taclaw_job(
+                job=job,
+                target_type="directory",
+                target=tempfile.gettempdir(),
+                arch_name="injection_test",
+                ssp_profile="low_risk_cloud",
+                enrich_from_github=False,
+                github_repo=None,
+                passport=passport,
+                passport_token="tok_test",
+            )
 
+        assert captured.get("status") == "completed", f"job did not complete: {captured}"
         return captured
 
     async def test_investigation_present_on_block(self):
@@ -349,14 +346,15 @@ class TestTAclawWireIn(unittest.IsolatedAsyncioTestCase):
             patch("chatbot.api.routes.taclaw._validate_passport",
                   return_value=(True, "ok", {})),
             patch("chatbot.api.routes.taclaw.RepoCrawler") as MockCrawler,
-            patch("chatbot.api.routes.taclaw.get_settings") as mock_settings,
-            patch("chatbot.api.routes.taclaw.select_mode") as mock_route,
-            patch("chatbot.api.routes.taclaw._preflight_authority_gate",
-                  return_value=MagicMock(preflight={"blocked": False})),
-            patch("chatbot.api.routes.taclaw.ThreatAssessorHarness") as MockHarness,
-            patch("chatbot.api.routes.taclaw.build_export", return_value={"gate": {"result": "PASS"}}),
-            patch("chatbot.api.routes.taclaw.build_brain"),
-            patch("chatbot.api.routes.taclaw.query_brain", return_value={}),
+            patch("chatbot.config.get_settings") as mock_settings,
+            patch("chatbot.harness.smart_router.select_mode") as mock_route,
+            patch("chatbot.harness.governance.get_governance_adapter",
+                  return_value=MagicMock(check_preflight=MagicMock(
+                      return_value=MagicMock(preflight={"blocked": False})))),
+            patch("chatbot.harness.controller.ThreatAssessorHarness") as MockHarness,
+            patch("chatbot.modules.ta_exporter.build_export", return_value={"gate": {"result": "PASS"}}),
+            patch("chatbot.modules.ta_brain_builder.build_brain"),
+            patch("chatbot.modules.ta_brain_query.query_brain", return_value={}),
         ):
             settings = MagicMock()
             settings.system.report_dir = "/tmp/ta_test_reports"
@@ -364,6 +362,8 @@ class TestTAclawWireIn(unittest.IsolatedAsyncioTestCase):
 
             crawler_instance = MagicMock()
             crawler_instance.crawl.return_value = artifacts
+            merged.to_mmd.return_value = "flowchart TB\n A-->B"
+            crawler_instance.merge_graphs.return_value = merged
             MockCrawler.return_value = crawler_instance
 
             routing = MagicMock()
@@ -376,29 +376,21 @@ class TestTAclawWireIn(unittest.IsolatedAsyncioTestCase):
             harness_instance.run_typed.return_value = MagicMock()
             MockHarness.return_value = harness_instance
 
-            with patch("chatbot.api.routes.taclaw.MermaidAdapter") as MockMmd:
-                mock_graph = MagicMock()
-                mock_graph.nodes = [MagicMock()]
-                mock_graph.edges = []
-                mock_graph.adapter_metadata = merged.adapter_metadata
-                mock_graph.source_trust = "unverified"
-                MockMmd.return_value.parse.return_value = mock_graph
 
-                with patch("chatbot.api.routes.taclaw.ArchitectureGraph") as MockAG:
-                    MockAG.merge.return_value = merged
 
-                    await _run_taclaw_job(
-                        job=job,
-                        target_type="directory",
-                        target="/tmp/fake_arch",
-                        arch_name="pass_test",
-                        ssp_profile="low_risk_cloud",
-                        enrich_from_github=False,
-                        github_repo=None,
-                        passport=None,
-                        passport_token=None,
-                    )
+            await _run_taclaw_job(
+                job=job,
+                target_type="directory",
+                target=tempfile.gettempdir(),
+                arch_name="pass_test",
+                ssp_profile="low_risk_cloud",
+                enrich_from_github=False,
+                github_repo=None,
+                passport=None,
+                passport_token=None,
+            )
 
+        self.assertEqual(captured.get("status"), "completed", f"job did not complete: {captured}")
         inv = captured.get("result", {}).get("investigation", {})
         self.assertEqual(inv, {}, f"Expected empty investigation on PASS, got: {inv}")
 
