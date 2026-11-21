@@ -4,6 +4,29 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 263 — `detect_architecture_type`: a bare "agent" is not an AI signal
+
+**Date:** 2026-11-21
+**Status:** Fixed (`chatbot/modules/ground_truth_generator.py`, `tests/unit/test_architecture_type_detection.py`, 11 tests).
+
+**Principles audit:** P3 (deterministic rule, simpler than a model classifier) and P4 (a wrong type silently switched on ATLAS/AI-ML patterns and ARC controls, so the output looked confident about the wrong thing). No tension.
+
+**Defect:** substring match on the joined node labels typed any architecture containing "agent" as `ai_system`. Found by TAprover's `agentic_trigger_parity` (Entry 262): 3 of its 9 REFUTED were architectures whose "agent" is not AI ("Hybrid Join Agent", "CI Agent", "ImplantAgent" malware).
+
+**Fix:** word-start regex over `llm|vector|embedding|prompt|openai|claude|gpt|agentic|ai agent|language model|copilot`; bare `agent` removed. `copilot` and `agentic` are additions so that agent-only AI architectures are still caught.
+
+**Measured before changing:** over the 88 reports, exactly 4 architectures change type, all non-AI: `ad002_hybrid_identity_adcs_1`, `exf_c2_beacon`, `t3_container_orchestration`, `t3_hybrid_identity`. No real LLM/agent architecture loses its type.
+
+**Verified end to end** (throwaway regenerations, deleted after): ad002 and t3_hybrid_identity -> `cloud`, t3_container_orchestration and exf_c2_beacon -> `generic`, agt_permission_escalation stays `ai_system`; TAprover VERIFIED on all five with 0 refuted.
+
+**Side effects to know:** the four non-AI architectures no longer get ATLAS/AI-ML patterns or AI controls, which is the intent. Existing `report/` copies and any brain instances built from them keep the old type until regenerated; the 6 stale `agt_*` reports from Entry 262 also still need a re-run. Not done here.
+
+**Not caught by this fix:** an AI system whose labels use none of those words (e.g. "Assistant", "Planner") is still typed by label alone. A structural signal (tool-call edges, model endpoints) would be sturdier; not built.
+
+**Pre-existing, unrelated:** 12 failures in `tests/unit/test_brain_route.py` and `test_ta_brain_builder.py` fail identically with and without this change.
+
+---
+
 ### Entry 262 — TAprover slice 2: logic checks (agentic ATLAS parity, coverage, mitigation validity) + --aggregate pass@k / pass^k
 
 **Date:** 2026-11-21

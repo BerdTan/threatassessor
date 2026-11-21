@@ -19,6 +19,7 @@ Usage:
     truth = generate_ground_truth("architecture.mmd", use_llm=True)
 """
 
+import re
 import json
 import logging
 from pathlib import Path
@@ -53,6 +54,10 @@ logger = logging.getLogger(__name__)
 # ARCHITECTURE TYPE DETECTION
 # ============================================================================
 
+_AI_LABEL_RE = re.compile(
+    r"\b(?:llm|vector|embedding|prompt|openai|claude|gpt|agentic|ai[ -]agent|language model|copilot)")
+
+
 def detect_architecture_type(nodes: List[Dict], edges: List[Dict], subgraphs: List[Dict]) -> str:
     """
     Detect architecture type from components.
@@ -62,8 +67,8 @@ def detect_architecture_type(nodes: List[Dict], edges: List[Dict], subgraphs: Li
     node_labels_lower = " ".join([n.get("label", "").lower() for n in nodes])
 
     # AI/LLM system indicators
-    ai_keywords = ["llm", "agent", "vector", "embedding", "prompt", "openai", "claude", "gpt"]
-    if any(kw in node_labels_lower for kw in ai_keywords):
+    # A bare "agent" is NOT an AI signal: "Hybrid Join Agent", "CI Agent", "ImplantAgent" are not AI systems (Entry 263).
+    if _AI_LABEL_RE.search(node_labels_lower):
         return "ai_system"
 
     # Web application indicators
