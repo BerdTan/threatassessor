@@ -86,18 +86,40 @@ def _attack_paths(gt: Dict) -> List[Dict]:
     return gt.get("expected_attack_paths") or gt.get("attack_paths") or []
 
 
+def _techniques(gt: Dict) -> List[str]:
+    """Flat technique list: engine output has none, so union the per-path techniques (sorted, unique)."""
+    flat = gt.get("techniques")
+    if isinstance(flat, list) and flat:
+        return flat
+    return sorted({t for ap in _attack_paths(gt) for t in ap.get("techniques", []) if isinstance(t, str)})
+
+
+def _val_pct(gt: Dict, val: Dict):
+    if val.get("val_pct") is not None:
+        return val["val_pct"]
+    tv = gt.get("technique_validation") or []
+    return round(100 * sum(1 for v in tv if v.get("valid")) / len(tv), 1) if tv else None
+
+
+def _confidence(gt: Dict):
+    c = gt.get("confidence")
+    if c is None:
+        c = (gt.get("confidence_breakdown") or {}).get("final")
+    return c
+
+
 def _build_assessment(gt: Dict) -> Dict:
     aps = _attack_paths(gt)
-    techs = gt.get("techniques", [])
+    techs = _techniques(gt)
     controls = gt.get("control_recommendations", [])
     val = gt.get("validation", {}) or gt.get("validation_report", {}) or {}
     meta = gt.get("metadata", {})
 
     return {
-        "risk_score_before":   gt.get("residual_risk_before", {}) or None,
-        "risk_score_after":    gt.get("residual_risk_after", {})  or None,
-        "confidence":          gt.get("confidence"),
-        "val_pct":             val.get("val_pct"),
+        "risk_score_before":   gt.get("residual_risk_before") or gt.get("residual_risks_before") or None,
+        "risk_score_after":    gt.get("residual_risk_after") or gt.get("residual_risks_after") or None,
+        "confidence":          _confidence(gt),
+        "val_pct":             _val_pct(gt, val),
         # Engine Item 10.3: pipeline provenance on assessment findings
         "pipeline_mode":       meta.get("routing_mode") or meta.get("pipeline_mode") or "api_only",
         "generated_by":        meta.get("generated_by", "parser"),
@@ -168,7 +190,7 @@ def _build_posture_signal(gt: Dict, gov: Dict) -> Optional[Dict]:
 
         meta = gt.get("metadata", {})
         arch_type = meta.get("architecture_type", "generic")
-        techs = gt.get("techniques", [])
+        techs = _techniques(gt)
         aps = _attack_paths(gt)
         critical_count = sum(
             1 for ap in aps
