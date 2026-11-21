@@ -20,7 +20,7 @@ from fastapi.responses import StreamingResponse
 
 from chatbot.adapters import detect_adapter
 from chatbot.adapters.base import ArchitectureGraph
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 from chatbot.api.routes.streaming import analyze_with_progress
 
 router = APIRouter(prefix="/api/v1", tags=["analysis"])
@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/v1", tags=["analysis"])
 _MAX_SIZE = 10 * 1024 * 1024  # 10MB
 
 
-@router.post("/analyze/artifact")
+@router.post("/analyze/artifact", dependencies=[Depends(spend_gate("analyze-artifact"))])
 async def analyze_artifact(
     request: Request,
     artifact_file: UploadFile = File(

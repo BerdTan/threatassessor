@@ -17,7 +17,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ class GymStartRequest(BaseModel):
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("/gym/start", dependencies=[Depends(verify_api_key)])
+@router.post("/gym/start", dependencies=[Depends(verify_api_key), Depends(spend_gate("gym-start"))])
 async def gym_start(body: GymStartRequest):
     """Start (or restart) the TAgym autonomous assessment loop."""
     global _session

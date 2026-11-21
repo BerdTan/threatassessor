@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 from chatbot.api.routes.reports import resolve_arch_dir
 from chatbot.modules.director_caster import DirectorCaster
 from chatbot.modules.perspective_runner import PerspectiveRunner
@@ -110,7 +110,7 @@ async def _perspective_stream(
 
 @router.post(
     "/perspective/run/{architecture_name}",
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_api_key), Depends(spend_gate("perspective-run"))],
     summary="Stream kill chain simulation for a scenario",
 )
 async def perspective_run(

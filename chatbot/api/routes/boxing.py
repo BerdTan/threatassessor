@@ -16,7 +16,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 from chatbot.api.job_store import Job, get_job_store
 from chatbot.config import get_settings
 
@@ -66,7 +66,7 @@ async def _run_boxing_job(job: Job, req: BoxingRequest) -> None:
         store.update(job.job_id, status="failed", error=str(exc), progress=0)
 
 
-@router.post("/boxing/run", dependencies=[Depends(verify_api_key)])
+@router.post("/boxing/run", dependencies=[Depends(verify_api_key), Depends(spend_gate("boxing-run"))])
 async def boxing_run(body: BoxingRequest):
     """Submit a boxing match. Poll GET /api/v1/boxing/jobs/{job_id} for result."""
     mmd = Path(body.mmd_path)

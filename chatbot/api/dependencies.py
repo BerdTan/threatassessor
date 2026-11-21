@@ -45,3 +45,43 @@ async def verify_api_key(
         )
 
     return tm_api_key
+
+
+def spend_gate(entry_point: str):
+    """Dependency factory: fail-closed spend gate for a route (Entry 264).
+
+    Attach with ``dependencies=[Depends(spend_gate("name"))]`` on every route
+    that can spend LLM tokens. ``chatbot.harness.spend_gate.SPEND_ROUTES`` lists
+    them and a test fails if one is missing the gate.
+    """
+    import logging
+
+    from fastapi import Request
+
+    from chatbot.harness import spend_gate as _gate
+    from chatbot.harness.caller_context import build_caller_context
+
+    async def spend_gate(request: Request) -> None:  # name is asserted by tests
+        caller = build_caller_context(
+            request.headers, request.client.host if request.client else None, "rest"
+        )
+        verdict = _gate.check(
+            entry_point,
+            architecture=request.path_params.get("architecture_name", ""),
+            caller_id=caller["caller_id"],
+        )
+        if not verdict.allowed:
+            logging.getLogger(__name__).warning(
+                "spend_gate %s entry=%s caller=%s reason=%s",
+                verdict.action, entry_point, caller["caller_id"], verdict.reason,
+            )
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_503_SERVICE_UNAVAILABLE
+                    if verdict.action == "kill"
+                    else status.HTTP_403_FORBIDDEN
+                ),
+                detail={"blocked": True, "action": verdict.action, "reason": verdict.reason},
+            )
+
+    return spend_gate

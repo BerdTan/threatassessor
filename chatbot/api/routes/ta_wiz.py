@@ -21,7 +21,7 @@ from typing import AsyncGenerator, List, Optional
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 from chatbot.api.models.requests import TAWizAskRequest
 from chatbot.api.streaming import SSEStream
 
@@ -357,7 +357,7 @@ async def _ta_wiz_stream(
 # Endpoint
 # ---------------------------------------------------------------------------
 
-@router.post("/ask")
+@router.post("/ask", dependencies=[Depends(spend_gate("ta-wiz-ask"))])
 async def ta_wiz_ask(
     payload: TAWizAskRequest,
     _: str = Depends(verify_api_key),

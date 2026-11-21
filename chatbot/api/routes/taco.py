@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 
 router = APIRouter(prefix="/api/v1/taco", tags=["taco"])
 
@@ -251,7 +251,7 @@ def _taco_write_feedback(brain_hop, final_confidence: float) -> None:
 # Routes
 # ---------------------------------------------------------------------------
 
-@router.post("/run", dependencies=[Depends(verify_api_key)])
+@router.post("/run", dependencies=[Depends(verify_api_key), Depends(spend_gate("taco-run"))])
 async def taco_run(req: TACORunRequest) -> StreamingResponse:
     """SSE stream — emits hop events as they complete, then taco_complete."""
     return StreamingResponse(
@@ -261,7 +261,7 @@ async def taco_run(req: TACORunRequest) -> StreamingResponse:
     )
 
 
-@router.post("/run-sync", dependencies=[Depends(verify_api_key)])
+@router.post("/run-sync", dependencies=[Depends(verify_api_key), Depends(spend_gate("taco-run-sync"))])
 async def taco_run_sync(req: TACORunRequest) -> JSONResponse:
     """Blocking JSON response — returns full HopChain. For MCP tools and non-SSE callers."""
     from chatbot.modules.taco_agent import TACOAgent  # noqa: PLC0415

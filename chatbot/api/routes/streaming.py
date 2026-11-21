@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator, Optional
 
 from chatbot.services import ThreatAnalysisService
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 from chatbot.harness.caller_context import build_caller_context
 from chatbot.api.streaming import SSEStream, ProgressTracker
 from chatbot.config import get_settings as _get_cfg
@@ -449,7 +449,7 @@ async def analyze_with_progress(
         )
 
 
-@router.post("/analyze-stream")
+@router.post("/analyze-stream", dependencies=[Depends(spend_gate("analyze-stream"))])
 @limiter.limit("10/minute")
 async def analyze_architecture_stream(
     request: Request,
@@ -907,7 +907,7 @@ async def expert_review_with_progress(
         )
 
 
-@router.get("/expert-review")
+@router.get("/expert-review", dependencies=[Depends(spend_gate("expert-review-stream"))])
 async def expert_review_stream(
     architecture_name: str = Query(
         ...,
@@ -977,7 +977,7 @@ async def expert_review_stream(
     )
 
 
-@router.get("/run-critic")
+@router.get("/run-critic", dependencies=[Depends(spend_gate("run-critic"))])
 async def run_single_critic(
     architecture_name: str = Query(..., description="Architecture name (must match an existing analysis)"),
     critic: str = Query(..., description="Critic to run: architect | tester | red_team | purple_team | blackhat | scrum_master"),
@@ -1218,7 +1218,7 @@ _GENERATE_MODALITIES = {
 }
 
 
-@router.post("/generate-mmd")
+@router.post("/generate-mmd", dependencies=[Depends(spend_gate("generate-mmd"))])
 async def generate_mmd(
     payload: dict,
     api_key: str = Depends(verify_api_key),

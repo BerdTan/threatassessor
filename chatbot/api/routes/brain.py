@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 from chatbot.modules.ta_brain_query import BRAIN_PATH, INSTANCES_PATH, INTERACTIONS_PATH, query_brain
 from chatbot.modules.ta_brain_feedback import record_feedback, get_feedback_summary
 from chatbot.modules.ta_brain_confidence import save_confidence_decay
@@ -181,7 +181,7 @@ async def brain_decay():
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
 
-@router.post("/generate-mmds", dependencies=[Depends(verify_api_key)])
+@router.post("/generate-mmds", dependencies=[Depends(verify_api_key), Depends(spend_gate("brain-generate-mmds"))])
 async def brain_generate_mmds(req: BrainGenerateRequest):
     """Generate synthetic MMDs from meta-layer gaps. Stages results for human approval."""
     import asyncio

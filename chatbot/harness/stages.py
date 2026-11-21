@@ -481,30 +481,19 @@ class BouncerStage(PipelineStage):
             _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
             raise BlockedPipelineError(reason, ctx)
 
-        # ── Check 3/4: YAML policy overrides ─────────────────────────────────
-        try:
-            import yaml as _yaml
-            from pathlib import Path as _Path
-            _policy_path = _Path("policies/agent_governance.yaml")
-            if _policy_path.exists():
-                _policy = _yaml.safe_load(_policy_path.read_text())
-                bouncer_cfg = _policy.get("bouncer", {})
-
-                if bouncer_cfg.get("kill_switch") is True:
-                    reason = "kill_switch=True in agent_governance.yaml"
-                    _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
-                    raise BlockedPipelineError(reason, ctx)
-
-                arch_name = ctx.get("architecture_name", "")
-                blocked_archs = bouncer_cfg.get("blocked_architectures", [])
-                if arch_name and arch_name in blocked_archs:
-                    reason = f"architecture '{arch_name}' in blocked_architectures"
-                    _emit(ctx, "stage_complete", "bouncer", {"blocked": True, "reason": reason})
-                    raise BlockedPipelineError(reason, ctx)
-        except BlockedPipelineError:
-            raise
-        except Exception:
-            pass  # YAML load failure → allow through (non-fatal)
+        # ── Check 3/4: kill switch + blocked architectures (single spend gate) ─
+        # Fail closed (Entry 264): an unreadable policy blocks instead of allowing.
+        from chatbot.harness import spend_gate as _spend_gate
+        _v = _spend_gate.check(
+            "pipeline",
+            architecture=ctx.get("architecture_name", ""),
+            caller_id=ctx.get("caller_id", ""),
+        )
+        if not _v.allowed:
+            reason = _v.reason
+            _emit(ctx, "stage_complete", "bouncer",
+                  {"blocked": True, "reason": reason, "gate_action": _v.action})
+            raise BlockedPipelineError(reason, ctx)
 
         # ── Check 5: Pre-flight authority gate (independent second signal) ──
         # Set by the adapter-layer check_preflight() before the harness starts.

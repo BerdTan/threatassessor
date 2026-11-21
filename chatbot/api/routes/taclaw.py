@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 from chatbot.adapters.base import ArchitectureGraph
 from chatbot.adapters.crawler import CrawledArtifact, RepoCrawler, clone_repo
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 from chatbot.api.job_store import Job, get_job_store
 from chatbot.config import get_settings
 from chatbot.modules.agent_passport import AgentPassport, mint_passport, validate_token as _validate_passport
@@ -498,7 +498,7 @@ async def _run_taclaw_job(
 
 # ── endpoints ─────────────────────────────────────────────────────────────────
 
-@router.post("/taclaw/run", dependencies=[Depends(verify_api_key)])
+@router.post("/taclaw/run", dependencies=[Depends(verify_api_key), Depends(spend_gate("taclaw-run"))])
 async def taclaw_run(body: TAClawRequest):
     """
     Submit a TAclaw autonomous security assessment job.

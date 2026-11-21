@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from typing import List, Dict
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 from chatbot.api.export_tracker import get_export_tracker
 from chatbot.modules.mitre import MitreHelper, get_mitre_helper as _get_mitre_singleton
 from chatbot.modules.atlas_helper import get_atlas_helper as _get_atlas_singleton
@@ -229,7 +229,7 @@ async def list_reports(architecture_name: str):
     }
 
 
-@router.post("/reports/{architecture_name}/rerun-with-sm")
+@router.post("/reports/{architecture_name}/rerun-with-sm", dependencies=[Depends(spend_gate("rerun-with-sm"))])
 async def rerun_with_sm(
     architecture_name: str,
     _: str = Depends(verify_api_key),
@@ -527,7 +527,7 @@ async def delete_sm_run(
     return {"status": "ok", "deleted": f"{architecture_name}/sm{n}"}
 
 
-@router.post("/reports/{architecture_name}/sm/{n}/rerun")
+@router.post("/reports/{architecture_name}/sm/{n}/rerun", dependencies=[Depends(spend_gate("sm-rerun"))])
 async def rerun_sm_analysis(
     architecture_name: str,
     n: int,
@@ -1846,7 +1846,7 @@ async def get_tatb_corpus():
     return {"architectures": arch_scores, "avg": avg}
 
 
-@router.post("/reports/{architecture_name}/generate-ciso-brief")
+@router.post("/reports/{architecture_name}/generate-ciso-brief", dependencies=[Depends(spend_gate("ciso-brief"))])
 async def generate_ciso_brief(
     architecture_name: str,
     llm: bool = Query(False, description="Include LLM narrative (slower)"),

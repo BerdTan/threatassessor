@@ -14,7 +14,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
-from chatbot.api.dependencies import verify_api_key
+from chatbot.api.dependencies import verify_api_key, spend_gate
 from chatbot.config.settings import (
     USER_CONFIG_PATH,
     get_settings,
@@ -115,7 +115,7 @@ async def put_config(payload: dict, _: str = Depends(verify_api_key)):
     return {"status": "ok", "config": result}
 
 
-@router.get("/llm-check")
+@router.get("/llm-check", dependencies=[Depends(spend_gate("llm-check"))])
 async def llm_check(_: str = Depends(verify_api_key)):
     """
     Verify the configured LLM provider is reachable and responds.
