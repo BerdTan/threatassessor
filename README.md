@@ -230,7 +230,7 @@ python3 .claude/skills/check-model-routing/scripts/check-model-routing.py
 
 **Spend gate** — one fail-closed gate on every spend route; the kill switch and per-caller limits live in `policies/agent_governance.yaml` under `bouncer:`. Limits are soft until per-caller keys exist.
 
-**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before any LLM token is spent. 70 DETECT rules emit OCSF events for SOC consumption.
+**Governance gate** — `BouncerStage` (`required=True`) halts the pipeline on `CRITICAL` signals before the critic, ScrumMaster and AIVSS stages run. It sits after analysis, so it does not stop all spend; the spend gate above is the control that refuses a request before any work starts (REST routes only so far). 70 DETECT rules emit OCSF events for SOC consumption.
 
 ## Go deeper
 

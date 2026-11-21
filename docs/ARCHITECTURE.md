@@ -24,6 +24,7 @@ The system is designed around one invariant: **every analysis path converges on 
 | **Smart Router** | `chatbot/harness/smart_router.py` | `select_mode()` → brain_fast / api_only / full_moe |
 | **Analysis Pipeline** | `chatbot/modules/ground_truth_generator.py` + `moe_orchestrator` | Deterministic threat mapping + LLM expert review → 16 report files |
 | **Harness v2** | `chatbot/harness/` | Stage sequencing, governance gate, 65 DETECT rules, EventBroker |
+| **Spend Gate** | `chatbot/harness/spend_gate.py`, `spend_ledger.py`, `chatbot/api/dependencies.py` | One fail-closed gate on the 18 REST spend routes (`SPEND_ROUTES`). Verdict on a ladder `allow < steer < throttle < block < kill` (`steer` not yet produced). Reads the kill switch, `blocked_architectures` and per-caller soft limits from `policies/agent_governance.yaml`; an unreadable policy blocks. HTTP 503 kill, 403 block, 429 throttle |
 | **Export** | `chatbot/modules/ta_exporter.py`, `chatbot/schemas/ta_export_v1.json` | `ta-export/1.0` bundle (gate + OTM + OCSF + TATB + provenance) |
 | **REST API** | `chatbot/api/routes/` | FastAPI surface: SSE streams, async job layer, admin (72 paths) |
 | **MCP Server** | `mcp_server/` | 18 tools via stdio — for Claude Desktop and coding agents |
@@ -66,6 +67,7 @@ flowchart TD
     subgraph HARNESS["Harness v2  chatbot/harness/"]
         HC["controller.py\nThreatAssessorHarness"]
         HS["Stages\nAnalysis → Report → Quality\n→ Bouncer → PolicyBroker\n→ AIVSS · Critics · SM"]
+        SG["spend_gate.py\nfail-closed verdict\nallow · throttle · block · kill"]
         HG["governance.py\n9 injection + 3 evasion checks"]
         HE["EventBroker\nSIEM · Langfuse · Webhook"]
         HD["rule_evaluator.py\n65 SOC DETECT rules"]
@@ -101,6 +103,8 @@ flowchart TD
 
     JEV["Jev  typesafe.ai\nSystem 1 gate\nnoul · choice · circuit breaker"]
 
+    E1 -->|every spend route| SG
+    SG -.->|policy + caller ledger| HC
     AG --> HARNESS
     SR -->|routing decision| HC
     HARNESS --> PIPELINE
@@ -172,7 +176,9 @@ These hold across all execution paths and all callers (REST, MCP, TAclaw, CLI):
 
 1. **Adapters always produce `ArchitectureGraph`** — every input format normalises to the same node/edge/fidelity structure before anything downstream runs.
 
-2. **Harness always gates** — `BouncerStage` (`required=True`) raises `BlockedPipelineError` on kill-switch or exploitation block before any LLM stage runs. No result exits the gate without passing all 5 Bouncer checks.
+2. **Harness always gates** — `BouncerStage` (`required=True`) raises `BlockedPipelineError` on kill-switch or exploitation block. It runs after Analysis, Report and Quality, so it halts the pipeline before the critics, ScrumMaster and AIVSS stages, not before every stage. No result exits the gate without passing all 5 Bouncer checks.
+
+2b. **Spend is gated at the front door** — every REST route that can spend LLM tokens carries the Spend Gate, which refuses a request before any work starts. Tests assert each of the 18 routes has it and that no LLM-calling route is missing from the list. Verified for REST only; the MCP and CLI entry points are not yet confirmed to pass the same gate. Per-caller limits are soft: `caller_id` is self-asserted.
 
 3. **`ta-export/1.0` is the canonical output** — the standardised bundle (`ta_export.json`) is the authoritative result for all callers. MCP tools, TAclaw, and CI gates all read from this schema.
 
