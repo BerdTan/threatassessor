@@ -299,6 +299,101 @@ def _find_or_build_session_header(entry: dict, decisions_text: str) -> str:
     return f"## Session — {entry['date']} (recalled)"
 
 
+
+# ── Floor archive (by entry number, order-preserving) ────────────────────────
+
+OPEN_STATUS = ("design intent", "pending", "design constraint")
+CITING_DOCS = ["docs/PRINCIPLES.md", "CLAUDE.md", "docs/ROADMAP.md", "docs/ARCHITECTURE.md",
+               "docs/blog/assets/p44/provenance.md"]
+
+
+def _cited_entries(files) -> set[int]:
+    out: set[int] = set()
+    for f in files:
+        try:
+            x = (ROOT / f).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for m in re.finditer(r"Entr(?:y|ies)\s+([0-9][0-9,\s\-\u2013and/]*)", x):
+            for a in re.findall(r"\d+(?:\s*[-\u2013]\s*\d+)?", m.group(1)):
+                if re.search(r"[-\u2013]", a):
+                    lo, hi = map(int, re.split(r"\s*[-\u2013]\s*", a))
+                    out |= set(range(lo, hi + 1))
+                else:
+                    out.add(int(a))
+    try:
+        rm = (ROOT / "docs/ROADMAP.md").read_text(encoding="utf-8")
+        for m in re.finditer(r"adr:\s*([0-9,\s]+)", rm):
+            out |= {int(x) for x in re.findall(r"\d+", m.group(1))}
+    except OSError:
+        pass
+    return out
+
+
+def run_floor(floor: int, confirm: bool, extra_keep: set[int]) -> int:
+    """Archive real '### Entry N' blocks with N < floor, except open ADRs, entries a
+    live doc cites, and --keep-also. Order and every other line are preserved."""
+    text = DECISIONS.read_text(encoding="utf-8")
+    lines = text.split("\n")
+    starts = [(i, int(m.group(1))) for i, l in enumerate(lines)
+              if (m := re.match(r"^### Entry (\d+)\b", l))]
+    bounds = [i for i, l in enumerate(lines) if re.match(r"^##? ", l) or re.match(r"^### ", l)]
+    cited = _cited_entries(CITING_DOCS)
+    keep_reason: dict[int, str] = {}
+    blocks: dict[int, tuple[int, int]] = {}
+    for i, n in starts:
+        end = next((b for b in bounds if b > i), len(lines))
+        blocks[n] = (i, end)
+        body = "\n".join(lines[i:end])
+        sm = re.search(r"^\*\*Status:\*\*\s*(.+)", body, re.M)
+        if n >= floor:
+            keep_reason[n] = f">= floor {floor}"
+        elif sm and any(k in sm.group(1).lower() for k in OPEN_STATUS):
+            keep_reason[n] = "open ADR (Status)"
+        elif n in cited:
+            keep_reason[n] = "cited by a live doc"
+        elif n in extra_keep:
+            keep_reason[n] = "--keep-also"
+    arch = sorted(n for n in blocks if n not in keep_reason)
+    kept_low = {n: r for n, r in keep_reason.items() if n < floor}
+    n_lines = sum(blocks[n][1] - blocks[n][0] for n in arch)
+    print(f"Floor {floor}: {len(arch)} to archive ({n_lines} lines), {len(blocks) - len(arch)} stay")
+    print("Kept below floor:", {n: kept_low[n] for n in sorted(kept_low)})
+    print("Archive:", arch)
+    if not confirm:
+        print("\nDry run — pass --confirm to execute.")
+        return 0
+    drop = set()
+    moved = []
+    for n in arch:
+        a, b = blocks[n]
+        drop |= set(range(a, b))
+        moved.append("\n".join(lines[a:b]).rstrip())
+    kept = [l for i, l in enumerate(lines) if i not in drop]
+    out, i = [], 0
+    while i < len(kept):
+        if re.match(r"^## Session", kept[i]):
+            j = i + 1
+            while j < len(kept) and not re.match(r"^## ", kept[j]):
+                j += 1
+            if any(re.match(r"^### ", l) for l in kept[i:j]):
+                out.extend(kept[i:j])
+            i = j
+        else:
+            out.append(kept[i]); i += 1
+    note = (f"*{len(arch)} entries below {floor} archived to docs/archive/DECISIONS_archive.md "
+            f"on {datetime.now().strftime('%Y-%m-%d')}; open ADRs and entries cited by live docs stay. "
+            f"Use `--recall N` to pull one back.*")
+    first = next((k for k, l in enumerate(out) if re.match(r"^## ", l)), len(out))
+    out[first:first] = [note, ""]
+    ARCHIVE.parent.mkdir(parents=True, exist_ok=True)
+    existing = ARCHIVE.read_text(encoding="utf-8") if ARCHIVE.exists() else ARCHIVE_HEADER
+    ARCHIVE.write_text(existing.rstrip() + "\n\n" + "\n\n".join(reversed(moved)) + "\n", encoding="utf-8")
+    DECISIONS.write_text(re.sub(r"\n{3,}", "\n\n", "\n".join(out)), encoding="utf-8")
+    print(f"Archived {len(arch)} entries -> {ARCHIVE}")
+    return 0
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -311,12 +406,18 @@ def main():
                         help="Archive entries older than N days (default: 60)")
     parser.add_argument("--min-entry", type=int, default=None,
                         help="Never archive entries at or above this number (safety floor)")
+    parser.add_argument("--floor", type=int, default=None,
+                        help="Number-based archive: all Entry N < floor except open ADRs and cited entries")
+    parser.add_argument("--keep-also", type=int, nargs="*", default=[],
+                        help="Extra entry numbers to keep in --floor mode")
     parser.add_argument("--verbose", action="store_true",
                         help="Show entry body preview in archive table")
     parser.add_argument("--recall", type=int, default=None, metavar="N",
                         help="Recall entry N from archive back into DECISIONS.md")
     args = parser.parse_args()
 
+    if args.floor is not None:
+        sys.exit(run_floor(args.floor, args.confirm, set(args.keep_also)))
     if args.recall is not None:
         sys.exit(run_recall(args.recall, args.confirm))
     else:
