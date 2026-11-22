@@ -43,6 +43,14 @@ DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 #   Fleet Security (Entry 222) — CoreBouncer; after Foundation (step 13)
 #   Fleet Service/Report/Coordinator — steps 17–21
 PRIORITY_STEPS = [
+    # ── NEXT BUILD after P44 publish — ManagedAgentHarness (Entry 221; build order Entries 231-233) ──
+    # circuit breaker + RunCredentials + confirm_isolation are already in base.py (step 29);
+    # harness.py wraps them into formal stage objects for the fleet pipeline.
+    (9,  40, "NEXT BUILD (gates AgentBench A-D; apply Entry 226 constraints, gate spend paths) AgentPrepStage — policy load + credential provisioning (confirm_isolation wired)", "chatbot/agents/managed/harness.py",  None),
+    (10, 40, "AgentExecuteStage — extract tool loop from ManagedAgent.run(); supervisor relay reused", "chatbot/agents/managed/harness.py", 9),
+    (11, 40, "AgentAuditStage — output scan + token budget + credential expiry", "chatbot/agents/managed/harness.py", 10),
+    (12, 40, "AgentSynthStage — write report + signal EventBroker", "chatbot/agents/managed/harness.py", 11),
+    (13, 40, "ManagedAgentHarness stage pipeline + BlockedAgentError (circuit breaker already in base)", "chatbot/agents/managed/harness.py", 12),
     # ── Current head of queue (2026-11-15 reconciliation) ────────────────────
     (45, 51, "✅ brain_fast → brain_route: routing oracle only, api_only floor, brain_expected/confirmed/missed annotations in ta-export (Entry 250)", "chatbot/harness/smart_router.py + ta_exporter.py", None),
     (46, 50, "🔶 slices 1-2 DONE (grounding, tactic, drift, agentic parity, coverage, mitigation, --aggregate; Entry 262); ai_system classifier fix DONE (Entry 263); remaining: cvss_validity, control_existence. TAprover: technique_grounding + tactic_correctness vs ATT&CK STIX; ProofAttestation; skill taprover (Entry 249)", ".claude/skills/taprover/", 45),
@@ -76,14 +84,6 @@ PRIORITY_STEPS = [
     (38, 43, "✅ TMbench Step E — TMagent: model-swappable TM generation agent (Entry 234); TA's leaderboard entry; model variants: hetzner/claude/gpt4o/ta_full_moe", "chatbot/agents/tmagent.py", 37),
     # Blog P40 unblocked after TMbench Step D (results exist to write about)
     (40, 43, "✅ Draft P40 blog — 'The Benchmark Threat Modeling Doesn't Have Yet'", "docs/blog/drafts/", 37),
-    # ── Priority 40 — ManagedAgentHarness harness.py (Entry 221) ─────────────
-    # circuit breaker + RunCredentials + confirm_isolation are already in base.py (step 29);
-    # harness.py wraps them into formal stage objects for the fleet pipeline.
-    (9,  40, "AgentPrepStage — policy load + credential provisioning (confirm_isolation wired)", "chatbot/agents/managed/harness.py",  None),
-    (10, 40, "AgentExecuteStage — extract tool loop from ManagedAgent.run(); supervisor relay reused", "chatbot/agents/managed/harness.py", 9),
-    (11, 40, "AgentAuditStage — output scan + token budget + credential expiry", "chatbot/agents/managed/harness.py", 10),
-    (12, 40, "AgentSynthStage — write report + signal EventBroker", "chatbot/agents/managed/harness.py", 11),
-    (13, 40, "ManagedAgentHarness stage pipeline + BlockedAgentError (circuit breaker already in base)", "chatbot/agents/managed/harness.py", 12),
     # ── AgentBench (Entry 233) — after step 13 ───────────────────────────────
     # TA's managed fleet is the entry; P39 primitives table = seed corpus.
     # Scorer: binary per-primitive + structural gap classification (achieved/near-term/deployment/structural).
