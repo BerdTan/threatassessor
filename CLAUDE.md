@@ -54,6 +54,8 @@ tail -f logs/api.log            # logs
 - `chatbot/harness/event_broker.py` — `EventBrokerCritic`, pub/sub to SIEM/Langfuse/Webhook sinks
 - `chatbot/harness/smart_router.py` — `select_mode(arch_name)` → `RoutingDecision`; brain_fast / api_only / full_moe selection
 - `chatbot/harness/rule_evaluator.py` — `RuleEvaluator` (70 DETECT rules)
+- `chatbot/harness/spend_gate.py` — `check()` returns a verdict (`allow<steer<throttle<block<kill`, fail-closed); `SPEND_ROUTES` lists the 18 gated REST routes; `MODE_WEIGHT` (full_moe=5, a guess)
+- `chatbot/harness/spend_ledger.py` — per-caller sliding-window requests/tokens (soft limits: `TM-CALLER` is self-asserted); `chatbot/harness/caller_context.py` — caller/session labels
 
 **SOC detection:**
 - `policies/soc_detection_rules.yaml` — 70 DETECT rules with OWASP/ATLAS/incident provenance
@@ -97,6 +99,8 @@ tail -f logs/api.log            # logs
 **Stage order (API_ONLY):** Analysis → Report → Quality → **Bouncer** → AIVSS  
 **Stage order (FULL_MOE):** Analysis → Report → Quality → **Bouncer** → Critics → SM → AIVSS → OutboundGate
 
+**Spend gate** (Entry 264): every route that can spend tokens carries the `spend_gate` dependency (503 kill, 403 block/unreadable policy, 429 throttle); verdicts reach Langfuse as `gate:<action>` spans. It decides; the route refuses; emitting is separate. Limits are soft per caller; MCP/CLI entry points are not gate-verified.
+
 **BouncerStage** halts the pipeline (`required=True`) when `exploitation.blocked=True`, `_outbound_blocked`, or `kill_switch` in `policies/agent_governance.yaml`. Raises `BlockedPipelineError` → API returns 400.
 
 **PolicyBroker** runs after QualityStage on every pipeline run. Reads live governance signals → dynamically adjusts `blocked_agents` + model routing before critics run.
@@ -136,8 +140,11 @@ python3 .claude/skills/check-governance/scripts/check-governance.py
 # EventBroker + sinks (65 tests)
 python3 .claude/skills/check-eventbroker/scripts/check-eventbroker.py
 
-# Adversarial red-team probe (Phase 2: no API; Phase 1: API required)
+# Adversarial red-team probe (Phase 2: no API; Phase 1: API required; Phase 3: spend gate, run with PYTHONPATH=. .venv/bin/python)
 /tmeval
+
+# TAprover: claims vs ATT&CK; also doc stage-order claims (export manifest first, see taprover skill)
+python3 .claude/skills/taprover/scripts/taprover.py --prove-docs report/stage_manifest.json --docs README.md docs/ARCHITECTURE.md
 
 # DETECT coverage flywheel
 python3 .claude/skills/detect-loop/scripts/detect-loop.py --observe-only
@@ -206,4 +213,4 @@ cat report/<arch>/ground_truth.json                        # raw output
 
 ---
 
-**Last Updated:** 2026-11-09
+**Last Updated:** 2026-11-22

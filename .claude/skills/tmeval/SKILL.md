@@ -43,6 +43,9 @@ POSTs 8 adversarial MMDs from `scripts/tmeval/adversarial_corpus/` to the live
 | `inj_path_traversal.mmd` | INJ | DETECT-INJ-002 |
 | `clean_baseline.mmd` | — | no rules (false-positive check) |
 
+### Phase 3 — spend gate (no API needed)
+Policy to verdict cases (kill switch, unreadable or wrong-shape policy fail closed), a route-coverage check (all 18 spend routes carry the gate), and a mutation proof: the old fail-open gate is run as a mutant and the 4 fail-closed cases must fail on it. 11 checks. Run with `PYTHONPATH=. .venv/bin/python scripts/tmeval/tmeval_run.py --phase3`; system `python3` cannot import the app and the route check fails.
+
 ## Run
 
 ```bash

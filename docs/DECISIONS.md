@@ -8,13 +8,13 @@ Read this file at the start of every session. After any significant decision abo
 
 **Date:** 2026-11-22
 
-**Problem:** Entry 265 left principles 9 and 10 with no verifier involvement. A false doc claim ("the Bouncer halts the pipeline before any LLM token is spent") had been corrected by hand (commit 962d92f); nothing would catch the next one.
+**Problem:** Entry 265 left principles 9 and 10 with no verifier involvement. A false doc claim (that the Bouncer halts the pipeline ahead of all token spend) had been corrected by hand (commit 962d92f); nothing would catch the next one.
 
-**Decision:** Option C. `scripts/validation/export_stage_manifest.py` is the only pipeline-side piece and writes `stage-manifest/0.1` JSON (scenario to ordered stage names). `taprover.py --prove-docs MANIFEST --docs FILE...` extracts "before any LLM" claims about the Bouncer and proves them against that file: REFUTED if any stage runs first, UNVERIFIABLE if the manifest has no Bouncer, and the result reports `checked=N` so zero claims is not read as proof. The independence test still passes (taprover imports nothing from the pipeline).
+**Decision:** Option C. `scripts/validation/export_stage_manifest.py` is the only pipeline-side piece and writes `stage-manifest/0.1` JSON (scenario to ordered stage names). `taprover.py --prove-docs MANIFEST --docs FILE...` extracts claims that the Bouncer acts ahead of all model calls and proves them against that file: REFUTED if any stage runs first, UNVERIFIABLE if the manifest has no Bouncer, and the result reports `checked=N` so zero claims is not read as proof. The independence test still passes (taprover imports nothing from the pipeline).
 
 **Result:** the first run found a third false claim, a code comment in the full_moe builder in `controller.py`, now corrected. 6 new tests in `tests/unit/test_doc_claims.py` (old README wording and old comment are REFUTED).
 
-**Limits:** it checks one claim shape (Bouncer before any LLM). Every stage before the Bouncer counts as able to spend, so it would also refute a claim that is true for a deterministic-only run. More claim types (route counts, rule counts) are the natural next addition; gen-blog's claims check already covers rule and entry IDs.
+**Limits:** it checks one claim shape (Bouncer ahead of all model calls) and matches one exact phrase, so a differently worded claim is invisible and a doc that quotes the phrase to discuss it is flagged (the first full-docs scan flagged this entry and the skill file for that reason; both reworded). Every stage before the Bouncer counts as able to spend, so it would also refute a claim that is true for a deterministic-only run. More claim types (route counts, rule counts) are the natural next addition; gen-blog's claims check already covers rule and entry IDs.
 
 **Alternatives rejected:** keep a standalone script (verifier gets no new claim type); a second prover skill (two conventions); importing the harness inside taprover (breaks the independence invariant).
 
@@ -42,7 +42,7 @@ Read this file at the start of every session. After any significant decision abo
 ### Entry 264 — TA-firewall: investigation-signal audit before any new rules (Blog P44 groundwork)
 
 **Date:** 2026-11-21
-**Status:** Audit done; observability steps 1–2 built; kill-switch gate (revised step 1) built 2026-11-21. Next: per-caller spend collector, gap map, incident simulation.
+**Status (updated 2026-11-22):** Steps 1–12 built and checked live (spend gate on 18 routes, per-caller soft throttle, verdicts and runs in Langfuse, MoE token accounting fixed). Open: `steer` rung, per-caller keys (limits are soft while `TM-CALLER` is self-asserted), boxing/taco/perspective emit no run events, `verify_api_key` on `/analyze/artifact`, MCP/CLI entry points unverified, steer-vs-block experiment. See Entries 265 (principles) and 266 (doc claims).
 
 **Trigger:** token-fraud / model-abuse concern (relay, MCP-as-worker, model probing, trial farming, spend growth). Two chatprd.ai pages were read. The payment-rules page is not applicable (TA takes no payments). The token-fraud page is one operator's anecdote with no thresholds, so it is a source of patterns, not of numbers.
 
