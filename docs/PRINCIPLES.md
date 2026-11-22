@@ -12,6 +12,8 @@ Introduce a stage, component, or mode only when it solves an actual problem that
 
 **Confirmed violation:** brain_fast was introduced to solve a real performance problem but overreached into skipping TM generation — the simplest fix for throughput was not the simplest architecture for correctness.
 
+**Confirmed correct (Entry 264):** one `spend_gate.check()` function returning a verdict, not a "firewall" component; the `steer` rung is reserved, not built, until an experiment shows it beats `block`.
+
 ---
 
 ## 2 — Context as engineering decision
@@ -19,6 +21,8 @@ Introduce a stage, component, or mode only when it solves an actual problem that
 More information is not automatically useful. Each stage receives what it needs for its bounded task, not the full pipeline state. RepoCrawler (MAX_FILES=200, dedup 0.85) and the adapter layer enforce this at ingestion.
 
 **Gap:** Critics currently receive full pipeline context rather than a scoped view of the dimension they review. When a stage uses more context than its task requires, it becomes harder to reason about, harder to test, and slower.
+
+**Inverse failure (Entry 264, step 9):** scoping too tightly is also a context bug. The Langfuse readers requested only the field groups they thought they needed; `metadata` came back `None` and every run looked empty. Scope deliberately, then check that the scoped view still contains what the task needs.
 
 ---
 
@@ -46,6 +50,8 @@ The agent recommends; the harness decides. Any rule that must hold under adversa
 
 **TA examples:** BouncerStage enforces governance signals regardless of what any critic or LLM output says. PolicyBroker reads live governance signals and adjusts routing before critics run — critics cannot override it. kill_switch in agent_governance.yaml halts the pipeline; no prompt can override it.
 
+**Limit to state plainly (Entry 264):** code enforcement is only as strong as the identity it keys on. Per-caller spend limits are soft because `TM-CALLER` is self-asserted; per-caller keys do not exist yet.
+
 ---
 
 ## 6 — Observability and evaluation throughout execution, not just at the final output
@@ -56,6 +62,8 @@ Instrument each stage, not just the result. The gap this principle identified: e
 
 **Closing:** TAprover closes the remaining gap — it evaluates the claims in the output, not the execution that produced them.
 
+**Extension (Entry 264, steps 8-12): prove the control fires, against live data.** Instrumentation and tests can share the code's assumption and prove nothing. Mocked readers agreed with wrong code; warn-and-continue handlers hid four bugs; a token total of 0 masked a double count. Every control and every metric needs one check against the real system that could have failed.
+
 ---
 
 ## 7 — Classify and execute are separate layers
@@ -65,6 +73,8 @@ The classifier decides the mode; the executor acts on it. Never collapse them. T
 **Confirmed correct:** smart_router's select_mode() returns a RoutingDecision and nothing else.
 
 **Confirmed violation:** _brain_fast_stream() both served as a routing outcome and smuggled TM generation logic (skip pipeline, serve patterns) into what should have been a pure execution handler. Fixed in P51 (brain_route refactor, commit d5f4139).
+
+**Confirmed correct (Entry 264):** `spend_gate.check()` returns a verdict and never acts; the route dependency raises the 503/403/429; emitting the verdict to Langfuse is a third, separate step.
 
 ---
 
@@ -86,6 +96,8 @@ Memory and priority are navigation instruments, not bookkeeping. What to remembe
 
 **Failure mode:** accumulating notes that are never used because the connection between memory and action was never made explicit. Memory without a use-case is noise.
 
+**Observed drift (2026-11-21):** the memory index still said "all pushed (45cedd7), steps 1-2 done" after step 12. Notes that are not revised when the work moves become wrong, which is worse than missing.
+
 ---
 
 ## 10 — Document raw, reflect, recircle
@@ -98,4 +110,4 @@ Write what you think even before the idea is fully formed. Return to it, reflect
 
 ---
 
-*Last updated: 2026-11-09. For the decision history behind these principles, see DECISIONS.md Entry 251.*
+*Last updated: 2026-11-21 (Entry 265). For the decision history behind these principles, see DECISIONS.md Entries 251 and 265.*

@@ -4,6 +4,27 @@ Read this file at the start of every session. After any significant decision abo
 
 ---
 
+### Entry 265 — Principles amended with Entry 264 evidence (for Blog P44)
+
+**Date:** 2026-11-21
+**Status:** Done (`docs/PRINCIPLES.md`). No new principle added.
+
+**Why:** P44 teaches the principles through real cases. Four had no case from the token-abuse work, and the work produced two lessons no principle named. The user approved tweaking the principles to fit what was found.
+
+**Changes (each is a short added paragraph, nothing removed):**
+- **P1** gains a confirmed case: one gate function, `steer` reserved not built.
+- **P2** gains the inverse failure: scoping too tightly (Langfuse field groups) blinded the readers.
+- **P5** gains a stated limit: enforcement is only as strong as the identity it keys on (`TM-CALLER` is self-asserted).
+- **P6** is extended with "prove the control fires, against live data" (tests that share the code's assumption prove nothing).
+- **P7** gains a confirmed case: the gate returns a verdict, the route raises, the emit is separate.
+- **P9** gains an observed failure: memory index drifted behind the work.
+
+**Alternatives rejected:** an eleventh principle ("prove the control fires"). It is the same idea as P6 (evaluate correctness, not only health), and a new principle for one lesson breaks P1. Re-open if a second, distinct case appears.
+
+**Not done:** memory index (`MEMORY.md`, `project_ta_firewall.md`) still needs the P9 drift fixed.
+
+---
+
 ### Entry 264 — TA-firewall: investigation-signal audit before any new rules (Blog P44 groundwork)
 
 **Date:** 2026-11-21
