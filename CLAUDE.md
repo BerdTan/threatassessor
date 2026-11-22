@@ -101,7 +101,7 @@ tail -f logs/api.log            # logs
 
 **Spend gate** (Entry 264): every route that can spend tokens carries the `spend_gate` dependency (503 kill, 403 block/unreadable policy, 429 throttle); verdicts reach Langfuse as `gate:<action>` spans. It decides; the route refuses; emitting is separate. Limits are soft per caller; MCP/CLI entry points are not gate-verified.
 
-**BouncerStage** halts the pipeline (`required=True`) when `exploitation.blocked=True`, `_outbound_blocked`, or `kill_switch` in `policies/agent_governance.yaml`. Raises `BlockedPipelineError` → API returns 400.
+**BouncerStage** halts the pipeline (`required=True`) when `exploitation.blocked=True`, `_outbound_blocked`, or `kill_switch` in `policies/agent_governance.yaml`. Raises `BlockedPipelineError` → API returns 400. It runs after Analysis, Report and Quality, so it does not stop analysis-stage spend; the spend gate does.
 
 **PolicyBroker** runs after QualityStage on every pipeline run. Reads live governance signals → dynamically adjusts `blocked_agents` + model routing before critics run.
 
