@@ -6,7 +6,7 @@ allowed-tools: Bash Read
 
 # Recall
 
-Synthesise outstanding work across two sources: the MEMORY.md priority list and recent DECISIONS.md session entries. Output a single clean gist — no preamble.
+Synthesise outstanding work from `docs/ROADMAP.md` (single source of open items) and recent DECISIONS.md entries. Output a single clean gist — no preamble.
 
 ## Run
 
@@ -52,16 +52,9 @@ python3 .claude/skills/recall/scripts/recall.py
 - No commentary after the block — the gist is the whole output
 - **After a dependency analysis session:** update `PRIORITY_STEPS` in `recall.py` to reflect the new sequence; mark completed steps with a ✅ prefix on their label
 
-## Planned enhancement — ADR-aware auto-sequencing
+## Where the list lives
 
-Currently `PRIORITY_STEPS` is a manually maintained table updated after each dependency session. The planned upgrade (tracked as step 22 in `PRIORITY_STEPS`) will parse open ADRs from `DECISIONS.md` directly:
-
-1. Scan for entries with `Status: Design intent` or `Status: pending`
-2. Extract dependency language ("when X is ready", "before Y lands", "triggered when N agents")
-3. Build a dependency graph from those edges
-4. Output the sequence derived from topological sort of that graph
-
-Until that is built, the rule stays: **after any dependency analysis session, update `PRIORITY_STEPS` in `recall.py` to reflect the new chain.** The comment block above `PRIORITY_STEPS` explains the current chain and the decision points within it.
+Open work is `docs/ROADMAP.md` only (`- [ID] status | label | hint | needs | adr`). recall.py holds no priority table. When an item is done, delete its roadmap line. Open ADRs from DECISIONS.md are cross-referenced through each item's `adr:` field; an ADR with no roadmap item is flagged as needing sequencing.
 
 ## When to use
 
@@ -71,5 +64,5 @@ Until that is built, the rule stays: **after any dependency analysis session, up
 
 ## Relationship to /priorities
 
-`/priorities` reads only MEMORY.md and prints the full numbered list.
-`/recall` cross-references DECISIONS.md, surfaces newly logged items not yet in memory, and gives a concrete first step. Use `/recall` when resuming after a break or context compaction; use `/priorities` for a quick status check mid-session.
+`/priorities` reads MEMORY.md, which no longer keeps a priority list; prefer `/recall`.
+`/recall` reads the roadmap, cross-references DECISIONS.md, and gives a concrete first step. Use `/recall` when resuming after a break or context compaction; use `/priorities` for a quick status check mid-session.

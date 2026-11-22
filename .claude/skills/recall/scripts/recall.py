@@ -1,145 +1,21 @@
 #!/usr/bin/env python3
 """
-recall.py — Synthesise outstanding priorities from MEMORY.md + DECISIONS.md.
+recall.py — print open work from docs/ROADMAP.md plus new/open items from DECISIONS.md.
 
-Outputs a sequence-ordered gist:
-  - Done count (collapsed)
-  - Open priorities expanded into their build steps with file hints
-  - NEXT SESSION pointer
-  - New items from recent DECISIONS.md entries not yet in memory
-  - Concrete first step (first incomplete step in sequence)
-
-Update PRIORITY_STEPS after any dependency analysis session.
+ROADMAP.md is the single source for "what is next". This script holds no priority
+table of its own. Line format in ROADMAP.md:
+  - [ID] status | label | file hint | needs: ID,ID | adr: N,N
 """
 
 import re
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
-MEMORY_DIR = Path.home() / ".claude/projects/-mnt-c-BACKUP-DEV-TEST/memory"
-MEMORY_FILE = MEMORY_DIR / "MEMORY.md"
+ROADMAP_FILE = ROOT / "docs/ROADMAP.md"
 DECISIONS_FILE = ROOT / "docs/DECISIONS.md"
 
-# ── Sequence config ───────────────────────────────────────────────────────────
-# Each entry: (step, priority_num, label, file_hint, depends_on_step)
-# Update this after a dependency analysis session.
-# Mark a step done by prepending ✅ to its label.
-#
-# Dependency chain (2026-11-01, reordered for three-tier benchmarking system Entry 233):
-#   P37 (TA Perspective) — DONE (6f1f39b); blog P37 published
-#   P38 (Managed agent fleet) — DONE (87e8a1e); blog P38 published
-#   P39 (OpenShell primitives blog) — DONE + PUBLISHED
-#   OpenShell supervisor + fleet tool registry (Entries 228–230) — DONE (1a8cfd9, 48c083f, 083fb38)
-#   TMbench (Entry 231) — freestanding; spec+corpus are writing tasks; moved before harness
-#     Steps 34–38: spec → corpus → runner → run tools → TMagent (model-swappable leaderboard entry, Entry 234)
-#     Blog P40: "The Benchmark Threat Modeling Doesn't Have Yet"
-#   Fleet Foundation (Entry 221) — ManagedAgentHarness harness.py steps 9–13
-#     (circuit breaker + confirm_isolation already landed in base; harness.py wraps them as stages)
-#   AgentBench (Entry 233) — after step 13; TA's managed fleet is the entry; P39 primitives = seed
-#     Steps 39–42: corpus → scorer → run frameworks → leaderboard entry
-#     Blog P41: "How to Compare Agent Frameworks Before You Trust One"
-#   Recursive flywheel (Entry 227) — Steps A–D; starts after step 13
-#   Fleet Security (Entry 222) — CoreBouncer; after Foundation (step 13)
-#   Fleet Service/Report/Coordinator — steps 17–21
-PRIORITY_STEPS = [
-    # ── NEXT BUILD after P44 publish — ManagedAgentHarness (Entry 221; build order Entries 231-233) ──
-    # circuit breaker + RunCredentials + confirm_isolation are already in base.py (step 29);
-    # harness.py wraps them into formal stage objects for the fleet pipeline.
-    (9,  40, "NEXT BUILD (gates AgentBench A-D; apply Entry 226 constraints, gate spend paths) AgentPrepStage — policy load + credential provisioning (confirm_isolation wired)", "chatbot/agents/managed/harness.py",  None),
-    (10, 40, "AgentExecuteStage — extract tool loop from ManagedAgent.run(); supervisor relay reused", "chatbot/agents/managed/harness.py", 9),
-    (11, 40, "AgentAuditStage — output scan + token budget + credential expiry", "chatbot/agents/managed/harness.py", 10),
-    (12, 40, "AgentSynthStage — write report + signal EventBroker", "chatbot/agents/managed/harness.py", 11),
-    (13, 40, "ManagedAgentHarness stage pipeline + BlockedAgentError (circuit breaker already in base)", "chatbot/agents/managed/harness.py", 12),
-    # ── Current head of queue (2026-11-15 reconciliation) ────────────────────
-    (45, 51, "✅ brain_fast → brain_route: routing oracle only, api_only floor, brain_expected/confirmed/missed annotations in ta-export (Entry 250)", "chatbot/harness/smart_router.py + ta_exporter.py", None),
-    (46, 50, "🔶 slices 1-2 DONE (grounding, tactic, drift, agentic parity, coverage, mitigation, --aggregate; Entry 262); ai_system classifier fix DONE (Entry 263); remaining: cvss_validity, control_existence. TAprover: technique_grounding + tactic_correctness vs ATT&CK STIX; ProofAttestation; skill taprover (Entry 249)", ".claude/skills/taprover/", 45),
-    (47, 0,  "Sequence Entries 243/244 (TMbench-gap pipeline roadmap, tiered arch weighting) into steps", "docs/DECISIONS.md", None),
-    (48, 0,  "EvalWatch (Entry 253): ingest AI Risk Explorer evals catalogue -> DETECT coverage view; gated on TAwatch 65-rule heatmap + calibration loop live", "chatbot/modules/evalwatch.py", 26),
-    (49, 0,  "✅ Blog P42 published — 'My Incident Heatmap Was Lying to Me' (https://medium.com/@breadtan/my-incident-heatmap-was-lying-to-me-fixing-it-produced-new-detection-rules-8ab099e6a439)", "docs/BLOG_INDEX.md", None),
-    (50, 52, "🔶 TA-firewall / token-abuse (Entry 264): steps 1-2 DONE (caller_id+source+usage on run events, MCP mcp_tool_call to Langfuse); remaining: per-caller spend collector, simulate relay/MCP-worker/model-probe/force_mode incidents, gap map vs RES/ABU/MCP rules, new DETECT rules; per-caller keys is the real fix for spoofable TM-CALLER", "chatbot/harness/caller_context.py + mcp_server/access_logger.py + policies/soc_detection_rules.yaml", 46),
-    (51, 0,  "✅ Blog P43 PUBLISHED 2026-11-21 (medium: built-a-gym-for-my-skills-it-found-problems-i-had-shipped); LinkedIn hook still needs the link filled in", "docs/blog/drafts/draft_2026-11-15_p43.md", None),
-    (52, 0,  "Blog P44 (was 42c) TAgym continuity from P42: 'When the flywheel spins backward: why principle-based reflection catches what metrics miss'; evidence = brain_fast cycle, catalog drift false REFUTED, exporter key mismatch, vacuous PASS test, agent classifier bug caught by TAprover, TA-firewall investigation-signal audit; run gen-blog harvest", "docs/blog/drafts/", 50),
-    # ── Priority 33/34/35 — DONE ─────────────────────────────────────────────
-    (1,  33, "✅ DETECT-ABU 6 rules + MCPAccessLogger",  "policies/soc_detection_rules.yaml",         None),
-    (2,  34, "✅ Jev Phase 2: GT noul ❻ + CISO posture ❽", "ground_truth_generator.py + ta_exporter.py", 1),
-    (3,  35, "✅ Per-action MCP Jev noul gate ❾",        "mcp_server/server.py",                      None),
-    # ── Priority 37 — TA Perspective — DONE (6f1f39b) ────────────────────────
-    (4,  37, "✅ GroupCampaignMatcher + STIX cache",              "chatbot/modules/group_campaign_matcher.py",  None),
-    (5,  37, "✅ Hook into ground_truth Phase 3B",                "chatbot/modules/ground_truth_generator.py",  4),
-    (6,  37, "✅ PerspectiveRunner + vocabulary gap fix",         "chatbot/modules/perspective_runner.py",      5),
-    (7,  37, "✅ SSE route + GET /perspective/scenarios/{arch}",  "chatbot/api/routes/perspective.py",          6),
-    (8,  37, "✅ Kill chain canvas + pause/resume toolbar",       "chatbot/api/static/js/dashboard.js",         7),
-    # ── Priority 40 — OpenShell supervisor model (Entries 228–230) — DONE ────
-    (29, 40, "✅ OpenShell supervisor: allowed_tools/allowed_endpoints/supervisor relay/circuit breaker/RunCredentials/confirm_isolation (Entry 228)", "chatbot/agents/managed/base.py + registry.py", None),
-    (30, 40, "✅ Fleet tool registry + CISO posture endpoint + check-managed-agents skill 29/29 (Entries 229–230)", "chatbot/agents/managed/tool_registry.py + platform.py", 29),
-    (31, 40, "✅ Blog P39 published — 'Four Primitives, One Honest Gap'", "docs/blog/drafts/", 30),
-    # ── TMbench (Entry 231) — freestanding, before harness ───────────────────
-    # Spec + corpus are writing tasks; runner + gym integration come after.
-    # TMagent (step 38) — TA's leaderboard entry; model-swappable like TAmoe; not blocked on anything.
-    (34, 43, "✅ TMbench Step A — Draft threatmodel.md spec (TATB-derived, vendor-neutral)", "docs/tmbench/threatmodel.md", None),
-    (35, 43, "✅ TMbench Step B — Curate 10 reference architectures with ground truth", "docs/tmbench/corpus/", 34),
-    (36, 43, "✅ TMbench Step C — Batch runner + GT comparison (tmbench_runner.py)", "scripts/tmbench/tmbench_runner.py", 35),
-    (37, 43, "✅ TMbench Step D — hetzner baseline 10/10; 12.10/13 mean; agentic-overgen gap documented", "docs/tmbench/results/baseline_v1.md", 36),
-    (38, 43, "✅ TMbench Step E — TMagent: model-swappable TM generation agent (Entry 234); TA's leaderboard entry; model variants: hetzner/claude/gpt4o/ta_full_moe", "chatbot/agents/tmagent.py", 37),
-    # Blog P40 unblocked after TMbench Step D (results exist to write about)
-    (40, 43, "✅ Draft P40 blog — 'The Benchmark Threat Modeling Doesn't Have Yet'", "docs/blog/drafts/", 37),
-    # ── AgentBench (Entry 233) — after step 13 ───────────────────────────────
-    # TA's managed fleet is the entry; P39 primitives table = seed corpus.
-    # Scorer: binary per-primitive + structural gap classification (achieved/near-term/deployment/structural).
-    (39, 44, "AgentBench Step A — Define 4-primitive corpus (P39 seed + 4 other frameworks)", "docs/agentbench/corpus/", 13),
-    (41, 44, "AgentBench Step B — Build primitive scorer (binary coverage + gap classification)", ".claude/skills/agentbench/scripts/agentbench-run.py", 39),
-    (42, 44, "AgentBench Step C — Run 5 frameworks; produce leaderboard entry for TA fleet", "docs/agentbench/results/", 41),
-    (43, 44, "AgentBench Step D — Publish leaderboard + TA entry; P41 blog draft", "docs/blog/drafts/", 42),
-    # ── Priority 41 — Recursive improvement flywheel (Entry 227) ─────────────
-    # Starts after step 13 (harness exists); runs in parallel with CoreBouncer + fleet build.
-    (23, 41, "Step A — BouncerStage context-hash parity check",  "chatbot/harness/stages.py",             13),
-    (24, 41, "Step B — SUCCEEDED auto-staging → synthetic MMD queue", "chatbot/modules/perspective_runner.py", 23),
-    (25, 41, "Step C — Continuous red-team harness (known-evasion scenarios, live pipeline)", ".claude/skills/check-detect/scripts/check-detect.py", 23),
-    (26, 41, "Step D — GymProposer: Brier-triggered harness edit candidates", "chatbot/api/routes/gym.py", 25),
-    # ── Fleet Security — CoreBouncer (Entry 222) ──────────────────────────────
-    (14, 40, "CoreBouncer: extract hardening layers from ManagedAgent base", "chatbot/agents/managed/bouncer.py", 13),
-    (15, 40, "Cross-fleet gating rule: report-layer-only signal between fleets", "chatbot/agents/managed/bouncer.py", 14),
-    (16, 40, "Human-in-the-loop threshold (confidence < 0.7 → queue for approval)", "chatbot/agents/managed/bouncer.py", 15),
-    # ── Fleet Service + Report + Coordinator ─────────────────────────────────
-    (17, 40, "Second fleet agent (scope TBD)",                    "chatbot/agents/managed/",               16),
-    (18, 40, "Fleet manifest: report/fleet/<fleet_id>/manifest.json", "chatbot/agents/managed/reporter.py", 17),
-    (19, 40, "EventBroker: fleet_started/agent_triggered/fleet_blocked", "chatbot/harness/event_broker.py", 18),
-    (20, 40, "Fleet-level token budget across agent runs",         "chatbot/agents/managed/reporter.py",    19),
-    (21, 40, "FleetCoordinator: routes trigger type → correct fleet", "chatbot/agents/managed/coordinator.py", 20),
-    # ── Freestanding: ta-export + skill-master (Entry 224/225) ───────────────
-    (27, 0,  "ta-export version-stamp: {model_id, routing_mode, skills_context} into bundle", "chatbot/modules/ta_exporter.py", None),
-    (28, 0,  "skill-master: multi-location inventory + override detection + change-triggered re-scan (Entry 225)", ".claude/skills/skill-master/", 27),
-    # Blog P42 (synthesis): three-tier confidence stack — unblocked after AgentBench + flywheel
-    (44, 0,  "✅ Draft P42 blog — 'What 755 Real AI Operations Taught My Detection Rules' (9/9; PUBLISHED)", "docs/blog/drafts/draft_2026-11-14_p42.md", None),
-    # ── Freestanding: Open Factory (Entry 224) — needs sequencing ────────────
-    (33, 0,  "Open Factory (Entry 224): define ta-export reproducibility gap + interoperability steps", "docs/DECISIONS.md", 27),
-    # ── Freestanding: recall ADR auto-sequencing (Step 22) ───────────────────
-    (22, 0,  "✅ recall skill: ADR auto-scan now live — open design-intent entries surface automatically", ".claude/skills/recall/scripts/recall.py", None),
-]
+ITEM_RE = re.compile(r"^- \[([^\]]+)\]\s+(\w+)\s*\|(.*)$")
 
-# Maps DECISIONS entry number → list of step numbers that implement it.
-# Used to cross-reference the ADR panel with the build sequence.
-ADR_TO_STEPS: dict[int, list[int]] = {
-    221: [9, 10, 11, 12, 13],   # ManagedAgentHarness stages
-    222: [14, 15, 16],           # CoreBouncer
-    224: [33],                   # Open Factory (step = define implementation)
-    225: [27, 28],               # ta-export version-stamp + skill-master
-    226: [9],                    # shared knowledge constraints → harness step
-    227: [23, 24, 25, 26],       # recursive flywheel Steps A–D
-    228: [29],                   # OpenShell supervisor (done)
-    229: [30],                   # fleet tool registry (done)
-    230: [30],                   # check-managed-agents (done)
-    231: [34, 35, 36, 37, 38],   # TMbench A–E (step 38 = TMagent, Entry 234)
-    233: [39, 41, 42, 43],       # AgentBench A–D (Entry 233 = three-tier system)
-    234: [38],
-    249: [46],                   # TAprover
-    250: [45],                   # brain_route
-    264: [50],                   # TA-firewall investigation signals
-    253: [48],                   # EvalWatch                    # TMagent — model-swappable TM generation agent
-}
-
-# ── helpers ───────────────────────────────────────────────────────────────────
 
 def read_file(p: Path) -> str:
     try:
@@ -148,36 +24,40 @@ def read_file(p: Path) -> str:
         return ""
 
 
-def extract_priorities(memory: str) -> list[tuple[int, str, bool]]:
-    """Return list of (num, text, done) from the '## Current priorities' section."""
-    section = re.search(r"## Current priorities.*?(?=\n##|\Z)", memory, re.S)
-    if not section:
-        return []
-    items = re.findall(r"(\d+)\.\s+(.*)", section.group())
-    result = []
-    for num, text in items:
-        stripped = text.strip()
-        done = (
-            (stripped.startswith("~~") and stripped.endswith("~~"))
-            or stripped.startswith("✅")
-            or re.match(r"^1[–-]\d+\.", stripped) is not None
-        )
-        clean = re.sub(r"~~(.+?)~~", r"\1", stripped).strip()
-        result.append((int(num), clean, done))
-    return result
+def parse_roadmap(text: str) -> list[dict]:
+    """Return items in file order: id, status, label, hint, needs, adrs, section."""
+    items, section = [], ""
+    for line in text.splitlines():
+        if line.startswith("## "):
+            section = line[3:].strip()
+            continue
+        m = ITEM_RE.match(line)
+        if not m:
+            continue
+        fields = [f.strip() for f in m.group(3).split("|")]
+        label = fields[0] if fields else ""
+        hint = fields[1] if len(fields) > 1 else ""
+        needs, adrs = [], []
+        for f in fields[2:]:
+            if f.startswith("needs:"):
+                needs = [x.strip() for x in f[6:].split(",") if x.strip() and x.strip() != "—"]
+            elif f.startswith("adr:"):
+                adrs = [int(x) for x in re.findall(r"\d+", f)]
+        items.append({"id": m.group(1), "status": m.group(2), "label": label,
+                      "hint": hint, "needs": needs, "adrs": adrs, "section": section})
+    return items
 
 
 def extract_recent_decisions(decisions: str, max_sessions: int = 2) -> list[str]:
     """Pull open/pending items from the last N session blocks in DECISIONS.md."""
     sessions = re.split(r"(?=^## Session)", decisions, flags=re.M)
-    open_items = []
-    seen = set()
+    open_items, seen = [], set()
     target_kws = ["blog candidate", "planned", "next steps", "todo", "pending"]
     skip_kws = ["why now", "depends on", "prerequisite", "recursive", "answer arc", "alternatives rejected"]
     for session in sessions[1 : max_sessions + 1]:
         for line in session.splitlines():
             stripped = line.strip()
-            if not stripped or len(stripped) < 10:
+            if len(stripped) < 10:
                 continue
             low = stripped.lower()
             if any(kw in low for kw in skip_kws):
@@ -196,151 +76,66 @@ def extract_recent_decisions(decisions: str, max_sessions: int = 2) -> list[str]
 
 
 def extract_open_adrs(decisions: str) -> list[tuple[int, str, str]]:
-    """
-    Return (entry_num, title, status) for every entry whose Status line
-    contains 'design intent', 'pending', or 'design constraint'.
-    """
-    open_adrs = []
-    entries = re.split(r"(?=^### Entry \d+)", decisions, flags=re.M)
-    for block in entries:
+    """(entry_num, title, status) for entries whose Status says design intent / pending / design constraint."""
+    out = []
+    for block in re.split(r"(?=^### Entry \d+)", decisions, flags=re.M):
         m = re.match(r"^### Entry (\d+) — (.+)", block)
         if not m:
             continue
-        num = int(m.group(1))
-        title = m.group(2).strip()
-        status_m = re.search(r"^\*\*Status:\*\*\s*(.+)", block, re.M)
-        if not status_m:
-            continue
-        status = status_m.group(1).strip()
-        low = status.lower()
-        if any(kw in low for kw in ("design intent", "pending", "design constraint")):
-            open_adrs.append((num, title, status))
-    return open_adrs
+        sm = re.search(r"^\*\*Status:\*\*\s*(.+)", block, re.M)
+        if sm and any(k in sm.group(1).lower() for k in ("design intent", "pending", "design constraint")):
+            out.append((int(m.group(1)), m.group(2).strip(), sm.group(1).strip()))
+    return out
 
-
-def adr_step_ref(entry_num: int) -> tuple[bool, str]:
-    """
-    Return (in_sequence, display_ref) for an ADR.
-    display_ref is a short string like "steps 9–13" or "step 33 (needs sequencing)".
-    """
-    steps = ADR_TO_STEPS.get(entry_num)
-    if steps is None:
-        # Fall back to label scan
-        entry_str = str(entry_num)
-        for _, _, label, _, _ in PRIORITY_STEPS:
-            if f"Entry {entry_str}" in label or f"({entry_str})" in label:
-                return True, "in sequence (label ref)"
-        return False, "no steps defined yet"
-
-    if len(steps) == 1:
-        ref = f"step {steps[0]}"
-    elif steps[-1] == steps[0] + len(steps) - 1:
-        ref = f"steps {steps[0]}–{steps[-1]}"
-    else:
-        ref = "steps " + ", ".join(str(s) for s in steps)
-
-    # Check whether all mapped steps are done (have ✅ prefix)
-    done_set = {s for s, _, lbl, _, _ in PRIORITY_STEPS if lbl.startswith("✅")}
-    all_done = all(s in done_set for s in steps)
-    marker = "✅ done" if all_done else "⬜ open"
-    return True, f"{ref} [{marker}]"
-
-
-def in_priorities(text: str, priorities: list[tuple[int, str, bool]]) -> bool:
-    low = text.lower()
-    for _, p_text, _ in priorities:
-        if low[:30] in p_text.lower() or p_text.lower()[:30] in low:
-            return True
-    return False
-
-
-def priority_is_done(pnum: int, priorities: list[tuple[int, str, bool]]) -> bool:
-    for n, _, done in priorities:
-        if n == pnum:
-            return done
-    return False
-
-
-# ── main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    memory = read_file(MEMORY_FILE)
+    items = parse_roadmap(read_file(ROADMAP_FILE))
     decisions = read_file(DECISIONS_FILE)
-
-    priorities = extract_priorities(memory)
-    decision_items = extract_recent_decisions(decisions, max_sessions=2)
-    open_adrs = extract_open_adrs(decisions)
-
-    done = [(n, t) for n, t, d in priorities if d]
-    open_pnums = {n for n, _, d in priorities if not d}
-
-    # New items from DECISIONS not yet reflected in memory priorities
-    new_items = [item for item in decision_items if not in_priorities(item, priorities)]
-
     lines = ["## Recall\n"]
 
-    # Done (collapsed)
-    if done:
-        lines.append(f"**Done ({len(done)}):** " + ", ".join(str(n) for n, _ in done))
+    if not items:
+        lines.append("docs/ROADMAP.md missing or has no items.")
+    else:
+        open_ids = {i["id"] for i in items}
+        lines.append(f"**Open ({len(items)}):** source docs/ROADMAP.md")
+        current = None
+        for i in items:
+            if i["section"] != current:
+                current = i["section"]
+                lines.append(f"\n  [{current}]")
+            mark = "▶" if i["status"] == "doing" else "⬜"
+            blocked = [n for n in i["needs"] if n in open_ids]
+            dep = f"  ← needs {', '.join(blocked)}" if blocked else ""
+            lines.append(f"  {i['id']:<6} {mark} {i['label']}{dep}")
+            if i["hint"] and i["hint"] != "—":
+                lines.append(f"           → {i['hint']}")
 
-    # Open priorities — expanded into build steps, in sequence order.
-    # Include a step when: its priority is open OR it is not yet done (no ✅ prefix),
-    # so that undone sub-steps under a "done" parent priority still surface.
-    open_steps = [
-        (step, pnum, label, hint, dep)
-        for step, pnum, label, hint, dep in PRIORITY_STEPS
-        if pnum in open_pnums or pnum == 0 or not label.startswith("✅")
-    ]
-    # Drop steps that are individually marked done (✅) AND whose priority is closed,
-    # to avoid re-listing already-finished work.
-    open_steps = [
-        (step, pnum, label, hint, dep)
-        for step, pnum, label, hint, dep in open_steps
-        if not (label.startswith("✅") and pnum not in open_pnums and pnum != 0)
-    ]
+        adr_map: dict[int, list[str]] = {}
+        for i in items:
+            for n in i["adrs"]:
+                adr_map.setdefault(n, []).append(i["id"])
+        open_adrs = extract_open_adrs(decisions)
+        if open_adrs:
+            lines.append("\n**Open ADRs:**")
+            for num, title, _ in open_adrs:
+                ids = adr_map.get(num)
+                tag = f"→ {', '.join(ids)}" if ids else "⚠ no roadmap item yet, needs sequencing"
+                lines.append(f"  Entry {num}  {title if len(title) <= 65 else title[:62] + '…'}")
+                lines.append(f"           {tag}")
 
-    if open_steps:
-        lines.append("\n**Build sequence (open):**")
-        current_pnum = None
-        for step, pnum, label, hint, dep in open_steps:
-            done_marker = "✅" if label.startswith("✅") else "⬜"
-            label = label.lstrip("✅").strip()
-            # Group header when priority changes
-            if pnum != current_pnum:
-                p_label = f"Priority {pnum}" if pnum else "Freestanding"
-                lines.append(f"\n  [{p_label}]")
-                current_pnum = pnum
-                pass  # blog steps are now explicit ⬜ steps in PRIORITY_STEPS
-            dep_note = f"  ← needs step {dep}" if dep else ""
-            lines.append(f"  Step {step:2d} {done_marker} {label}{dep_note}")
-            lines.append(f"           → {hint}")
-
-    # Open ADRs from DECISIONS.md — compact reference panel with step cross-refs
-    if open_adrs:
-        lines.append("\n**Open ADRs:**")
-        for num, title, status in open_adrs:
-            in_seq, step_ref = adr_step_ref(num)
-            tag = f"→ {step_ref}" if in_seq else "⚠ no steps yet — needs sequencing"
-            short_title = title if len(title) <= 65 else title[:62] + "…"
-            lines.append(f"  Entry {num}  {short_title}")
-            lines.append(f"           {tag}")
-
-    # New from DECISIONS not yet in memory
+    new_items = [x for x in extract_recent_decisions(decisions)
+                 if not any(x.lower()[:30] in i["label"].lower() for i in items)]
     if new_items:
-        lines.append("\n**From recent DECISIONS (not yet in memory):**")
-        for item in new_items[:4]:
-            lines.append(f"  • {item}")
+        lines.append("\n**From recent DECISIONS (not on roadmap):**")
+        lines.extend(f"  • {x}" for x in new_items[:4])
 
-    # Concrete next step: first ⬜ step in sequence
-    first_open = next(
-        ((step, label, hint) for step, pnum, label, hint, dep in open_steps
-         if not label.startswith("✅")),
-        None
-    )
-    if first_open:
-        s, lbl, hint = first_open
-        lines.append(f"\n**Next up:** Step {s} — {lbl}")
-        lines.append(f"  → {hint}")
+    ready = next((i for i in items
+                  if i["status"] == "doing"), None) or next(
+        (i for i in items if not [n for n in i["needs"] if n in {j["id"] for j in items}]), None)
+    if ready:
+        lines.append(f"\n**Next up:** {ready['id']} — {ready['label']}")
+        if ready["hint"] and ready["hint"] != "—":
+            lines.append(f"  → {ready['hint']}")
 
     print("\n".join(lines))
 

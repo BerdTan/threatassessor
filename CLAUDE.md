@@ -7,6 +7,8 @@
 
 ## Session Protocol
 
+**Open work:** [`docs/ROADMAP.md`](docs/ROADMAP.md) is the single source (run `/recall`); delete a line when its item is done.
+
 **Read at session start:** [`docs/DECISIONS.md`](docs/DECISIONS.md)
 
 Add an entry after any significant architectural decision: date, what, why, alternatives rejected.
