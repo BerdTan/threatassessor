@@ -108,6 +108,10 @@ Write what you think even before the idea is fully formed. Return to it, reflect
 
 **Failure mode:** waiting until the idea is fully formed to write it down. By then the intermediate reasoning that would have caught errors is gone, and the written version records a conclusion without the path that produced it.
 
+**Confirmed correct (Entries 264-266):** the token-total bug has a full trail: screenshot of the 0 beside five reviewer calls, a same-day DECISIONS entry written before tidying, one fix in one commit, tests that fail if it is reverted, a live run whose six parts sum to 63,343, and an amendment to principle 6 that names the case. `docs/blog/assets/p44/provenance.md` maps each published number to its source.
+
+**Loop closed:** each amendment (1, 2, 5, 6, 7, 9) cites the entry it came from. Recircling means the next audit starts from these cases, not from memory.
+
 ---
 
-*Last updated: 2026-11-21 (Entry 265). For the decision history behind these principles, see DECISIONS.md Entries 251 and 265.*
+*Last updated: 2026-11-22 (Entries 265-266). For the decision history behind these principles, see DECISIONS.md Entries 251 and 265.*
