@@ -51,4 +51,5 @@ First check whether managed-agent model-calling paths are spend-gated; apply Ent
 - [MX-1] todo | ATT&CK v20.1 migration (needs approval); ATLAS upstream check | chatbot/data/ | needs: —
 - [MX-2] todo | Fix 3 pre-existing unit test failures | tests/unit/ | needs: —
 - [MX-3] todo | omnigent scratch experiment (check telemetry opt-out first) | — | needs: —
+- [FV-1] todo | TAfutureview ("see far, fight far, defend smart"): forward view per architecture from data TA holds (ATT&CK catalog drift, brain gap patterns, ingested eval catalogue). Every forward claim carries confidence + basis (observed trend / upstream forecast / TA model); predictions scored later against outcomes via Brier. Audit vs PRINCIPLES 3,4 first. Inspired by gods-eye-view (fused live layers, shows others' forecasts) | chatbot/modules/ (TBD) | needs: FW-D,EW-1
 - [BL-1] todo | Blog candidate: "one home per kind of information" (roadmap hygiene). Before snapshot saved in memory (project_roadmap_hygiene.md); write after a few weeks of use | docs/blog/drafts/ | needs: —
