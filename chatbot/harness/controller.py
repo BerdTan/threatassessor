@@ -932,7 +932,9 @@ def _full_moe() -> List[PipelineStage]:
         CriticStage, ScrumMasterStage, AIVSSStage, OutboundAIVSSGate,
     )
     # BouncerStage between QualityStage and CriticStage: blocks adversarial
-    # inputs before any LLM call is made.
+    # inputs before the critic, ScrumMaster and AIVSS stages run. It runs after
+    # analysis, so analysis-stage spend has already happened; the spend gate is
+    # what refuses a request before any work starts.
     return [
         AnalysisStage(), ReportStage(), QualityStage(), BouncerStage(),
         CriticStage(), ScrumMasterStage(), AIVSSStage(), OutboundAIVSSGate(),

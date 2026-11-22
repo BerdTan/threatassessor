@@ -365,6 +365,50 @@ def _load_inputs(args):
     return paths
 
 
+# --- Doc claims (Blog P44 principle 9): a document's claim about pipeline stage order ---
+DOC_CLAIM = re.compile(r"before any LLM", re.I)
+DOC_SUBJECT = re.compile(r"bouncer|governance gate", re.I)
+
+
+def extract_doc_claims(text):
+    """Lines that say the Bouncer/governance gate acts 'before any LLM ...' (subject within 2 lines above)."""
+    lines, out = text.splitlines(), []
+    for i, line in enumerate(lines):
+        if DOC_CLAIM.search(line) and DOC_SUBJECT.search(" ".join(lines[max(0, i - 2): i + 1])):
+            out.append({"line": i + 1, "text": line.strip()[:120]})
+    return out
+
+
+def prove_docs(manifest, docs, manifest_sha=""):
+    """Check stage-order claims in docs {path: text} against a stage-manifest/0.1 dict.
+
+    'Before any LLM' holds only if no stage runs ahead of the Bouncer. Limit: every stage
+    before the Bouncer is treated as able to spend (AnalysisStage can call a model).
+    """
+    scen = (manifest or {}).get("scenarios") or {}
+    late = {}
+    for name, stages in scen.items():
+        if "bouncer" in stages and stages.index("bouncer") > 0:
+            late[name] = "after " + ", ".join(stages[: stages.index("bouncer")])
+    has_bouncer = any("bouncer" in v for v in scen.values())
+    claims = []
+    for path, text in sorted(docs.items()):
+        for c in extract_doc_claims(text):
+            if not has_bouncer:
+                verdict, reason, ev = "UNVERIFIABLE", "no_bouncer_in_manifest", "manifest lists no scenario with a bouncer"
+            elif late:
+                verdict, reason, ev = "REFUTED", "stage_runs_before_bouncer", "; ".join(f"{k}: bouncer {v}" for k, v in late.items())
+            else:
+                verdict, reason, ev = "VERIFIED", "bouncer_first", "bouncer is the first stage in every scenario that has one"
+            claims.append({"category": "doc_stage_order", "source": path, "line": c["line"], "claim": c["text"],
+                           "verdict": verdict, "reason": reason, "evidence": ev})
+    counts = {v: sum(c["verdict"] == v for c in claims) for v in ("VERIFIED", "UNVERIFIABLE", "REFUTED")}
+    overall = "REFUTED" if counts["REFUTED"] else ("UNVERIFIABLE" if counts["UNVERIFIABLE"] else "VERIFIED")
+    return {"schema": SCHEMA, "kind": "doc_claims", "manifest_sha256": manifest_sha, "overall": overall,
+            "checked": len(claims), "counts": counts, "claims": claims}
+
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="TAprover — independent TM claim verifier")
     ap.add_argument("--prove", help="TM JSON (threatmodel/0.1 or ta-export/1.0)")
@@ -379,7 +423,19 @@ def main(argv=None):
     ap.add_argument("--refuted-only", action="store_true", help="show only REFUTED claims")
     ap.add_argument("--aggregate", action="store_true", help="group attestations by architecture and report pass@k / pass^k over the runs")
     ap.add_argument("--out", help="write attestation(s) JSON here")
+    ap.add_argument("--prove-docs", metavar="MANIFEST", help="stage-manifest JSON; check stage-order claims in --docs files against it")
+    ap.add_argument("--docs", nargs="+", help="documents or code files to scan for stage-order claims (with --prove-docs)")
     args = ap.parse_args(argv)
+    if args.prove_docs:
+        if not args.docs:
+            ap.error("--prove-docs needs --docs")
+        att = prove_docs(json.load(open(args.prove_docs)), {d: Path(d).read_text() for d in args.docs if Path(d).is_file()}, _sha(args.prove_docs))
+        for c in att["claims"]:
+            print(f"[{c['verdict']:<12}] {c['source']}:{c['line']} ({c['reason']}): {c['evidence']}\n               {c['claim']}")
+        print(f"docs: {att['overall']}  checked={att['checked']} {att['counts']}")
+        if args.out:
+            Path(args.out).write_text(json.dumps(att, indent=2))
+        return 1 if att["overall"] == "REFUTED" else 0
     paths = _load_inputs(args)
     if not paths:
         ap.error("give --prove or --prove-dir")

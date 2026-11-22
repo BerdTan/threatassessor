@@ -30,6 +30,15 @@ Logic checks (Entry 262): `agentic_trigger_parity` (declared agentic/AI architec
 Repeated runs: `--aggregate` groups attestations by architecture and prints pass@k (any run passes) and pass^k (all runs pass). A run passes when it has no REFUTED claim. Use pass^k for CI gates and public claims.
 Later slices (Entry 249): cvss_validity, control_existence.
 
+## Doc claims (Entry 266)
+TAprover also checks a document's claim about pipeline stage order, e.g. "the Bouncer halts the pipeline before any LLM runs". The pipeline side only exports data; the verifier never imports it.
+```bash
+PYTHONPATH=. .venv/bin/python scripts/validation/export_stage_manifest.py report/stage_manifest.json
+python3 .claude/skills/taprover/scripts/taprover.py --prove-docs report/stage_manifest.json \
+  --docs README.md docs/ARCHITECTURE.md docs/HARNESS.md chatbot/harness/controller.py chatbot/harness/stages.py
+```
+REFUTED if any stage runs ahead of the Bouncer (every earlier stage counts as able to spend). UNVERIFIABLE if the manifest has no Bouncer. Output reports `checked=N`; `checked=0` means no claim was found, not that the docs are proven.
+
 ## Catalog drift (Entry 261)
 The pipeline is pinned to `chatbot/data/enterprise-attack.json`; the latest ATT&CK bundle lives in `chatbot/data/attack_latest/` (gitignored). To prove against latest and separate catalog age from model error:
 ```bash
