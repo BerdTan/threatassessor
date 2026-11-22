@@ -1,11 +1,20 @@
 ---
 title: ThreatAssessor — Harness (pipeline controller + governance + observability)
-updated: 2026-10-26
-note: "Harness wraps the pipeline. Stage order: Analysis→Report→Quality→Bouncer→AIVSS (API_ONLY); +Critics→SM→OutboundGate (FULL_MOE). PolicyBroker runs after QualityStage. ManagedAgentHarness mirrors this pattern for the fleet (stages planned — Entry 221). New stage: subclass BaseStage in stages.py. New sink: subclass BaseSink in sinks.py."
+updated: 2026-11-22
+note: "Harness wraps the pipeline. Spend gate (Entry 264) refuses a request before any work starts; Bouncer runs AFTER Analysis/Report/Quality so it does not stop analysis-stage spend. Stage order: Analysis→Report→Quality→Bouncer→AIVSS (API_ONLY); +Critics→SM→OutboundGate (FULL_MOE). PolicyBroker runs after QualityStage. ManagedAgentHarness mirrors this pattern for the fleet (stages planned — Entry 221). New stage: subclass BaseStage in stages.py. New sink: subclass BaseSink in sinks.py."
 ---
 flowchart TD
     %% ── Entry point ────────────────────────────────────────
     API["/api/v1/analyze-stream<br/>/api/v1/expert-review<br/>(streaming.py)"]
+
+    %% ── Spend gate (front door, before any stage) ───────────
+    subgraph GATE["spend_gate.py  (Entry 264, before any stage)"]
+        SG1["check() → Verdict<br/>allow < steer < throttle < block < kill<br/>fail-closed; pure, never raises"]
+        SG2["route dependency<br/>503 kill · 403 block · 429 throttle<br/>18 SPEND_ROUTES"]
+        SG3["spend_ledger.py<br/>per-caller window (soft limits)<br/>caller_context.py: TM-CALLER"]
+        SG1 --> SG2
+        SG3 --> SG1
+    end
 
     %% ── Controller ─────────────────────────────────────────
     subgraph CTRL["controller.py"]
@@ -82,7 +91,9 @@ flowchart TD
     end
 
     %% ── Flow ────────────────────────────────────────────────
-    API --> CTRL
+    API --> GATE
+    GATE -->|allow| CTRL
+    SG2 -.->|"gate_verdict event"| EB
     CTRL --> STAGES
     S3 -->|"signals"| PB
     PB -->|"adjusts routing before critics"| S5

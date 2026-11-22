@@ -18,11 +18,12 @@ flowchart TD
 
     subgraph HARNESS["⚙️ Harness (pipeline controller)"]
         direction TB
+        H0["spend_gate.py<br/>(verdict before any work; 18 routes)"]
         H1["controller.py<br/>(PipelineRequest, run_typed)"]
         H2["stages.py<br/>(Analysis→Report→Quality→Bouncer→AIVSS)"]
         H3["policy_broker.py<br/>(dynamic routing after QualityStage)"]
         H4["event_broker.py<br/>+ sinks (SIEM/Langfuse/Webhook)"]
-        H1 --> H2 --> H3
+        H0 --> H1 --> H2 --> H3
         H2 -.->|"side-effects"| H4
     end
 

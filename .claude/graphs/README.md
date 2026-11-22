@@ -35,4 +35,4 @@ Update the relevant graph **when you change**:
 
 These are **curated relationship maps**, not auto-generated call graphs. The value is in the semantic groupings and workflow edges — keep them accurate but don't add every function call.
 
-## Last updated: 2026-10-18
+## Last updated: 2026-11-22 (harness: spend gate; master: spend gate; skills: verification cluster only, the rest of skills.mmd dates from July)

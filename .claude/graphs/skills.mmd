@@ -1,6 +1,6 @@
 ---
-title: ThreatAssessor — Skills Map (23 skills, 6 clusters, workflow edges)
-updated: 2026-07-18
+title: ThreatAssessor — Skills Map (core clusters; verification cluster added 2026-11-22, rest not re-audited)
+updated: 2026-11-22
 note: "Solid edges = required sequence. Dashed = optional follow-on. Each node = skill name + one-line purpose."
 ---
 graph TD
@@ -51,6 +51,15 @@ graph TD
     end
 
     %% ── Dev/health cluster ──────────────────────────────────
+    %% ── Verification & red-team cluster ─────────────────────
+    subgraph VERIFY["🧪 Verification & Red-team"]
+        TAP["taprover<br/>Prove TM claims vs ATT&CK (no LLM)<br/>--prove-docs checks doc stage-order claims"]
+        TME["tmeval<br/>Red-team: P1 outside-in, P2 injection,<br/>P3 spend gate + mutation proof"]
+        TBC["tmbench-check<br/>Score TM quality vs spec"]
+        TAP -.-> TBC
+        TME -.->|"gap found"| TAP
+    end
+
     subgraph DEV["🛠 Dev / Health"]
         CM["codemap<br/>Structural file index + symbol list<br/>(incremental, session-persistent)"]
         MMD["mmd<br/>Generate, validate, parse .mmd diagrams<br/>validate_arch.py + parse_mmd.py"]
